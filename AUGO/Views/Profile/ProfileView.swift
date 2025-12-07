@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct ProfileView: View {
+    
+    @EnvironmentObject var authManager: AuthenticationManager
 
     // dummy data for now
     private let name       = "Richard"
@@ -9,6 +11,7 @@ struct ProfileView: View {
     private let rank        = 3
 
     @State private var notificationsOn = true
+    @State private var showLogoutAlert = false
 
     var body: some View {
         ZStack {
@@ -101,20 +104,28 @@ struct ProfileView: View {
 
                     // MARK: Logout button
                     Button {
-                        // TODO: hook up real logout
+                        showLogoutAlert = true
                     } label: {
                         Text("Logout")
                             .font(.headline)
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
-                            .background(Color.Brand.primary)
+                            .background(Color.red)
                             .cornerRadius(12)
                     }
                     .padding(.horizontal, 16)
                     .padding(.bottom, 24)
                 }
             }
+        }
+        .alert("Logout", isPresented: $showLogoutAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Logout", role: .destructive) {
+                authManager.signOut()
+            }
+        } message: {
+            Text("Are you sure you want to logout?")
         }
         // navigation title is already set in RootTabView:
         // .navigationTitle("Profile")

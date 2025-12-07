@@ -3,6 +3,7 @@ import SwiftUI
 
 struct LoginView: View {
     @EnvironmentObject var router: AppRouter
+    @EnvironmentObject var authManager: AuthenticationManager
     @State private var showInfoForm = false
     
     var body: some View {
@@ -33,14 +34,25 @@ struct LoginView: View {
                     
                     // MARK: Sign in with Google Button
                     Button {
-                        showInfoForm = true
+                        Task {
+                            await authManager.signInWithGoogle()
+                            // Only navigate if authentication succeeded AND no errors
+                            if authManager.isAuthenticated && authManager.errorMessage == nil {
+                                showInfoForm = true
+                            }
+                        }
                     } label: {
                         HStack(spacing: 12) {
-                            Image(systemName: "globe")
-                                .font(.system(size: 20))
-                            
-                            Text("Sign in with Google")
-                                .font(.headline)
+                            if authManager.isLoading {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            } else {
+                                Image(systemName: "globe")
+                                    .font(.system(size: 20))
+                                
+                                Text("Sign in with Google")
+                                    .font(.headline)
+                            }
                         }
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
@@ -50,13 +62,23 @@ struct LoginView: View {
                                 .fill(Color.Brand.primary)
                         )
                     }
+                    .disabled(authManager.isLoading)
                     .padding(.horizontal, 32)
                     
-                    Text("Sign in with your university Google account")
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
+                    // Error Message
+                    if let error = authManager.errorMessage {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                    } else {
+                        Text("Sign in with your university Google account")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                    }
                     
                     Spacer()
                         .frame(height: 60)
@@ -73,4 +95,5 @@ struct LoginView: View {
 #Preview {
     LoginView()
         .environmentObject(AppRouter())
+        .environmentObject(AuthenticationManager())
 }

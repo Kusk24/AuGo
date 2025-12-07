@@ -1,8 +1,10 @@
 // UserInfoFormView.swift
 import SwiftUI
+import FirebaseAuth
 
 struct UserInfoFormView: View {
     @EnvironmentObject var router: AppRouter
+    @EnvironmentObject var authManager: AuthenticationManager
     
     @State private var studentID = ""
     @State private var nickname = ""
@@ -10,6 +12,8 @@ struct UserInfoFormView: View {
     @State private var selectedMajor = "Computer Science"
     @State private var birthDate = Date()
     @State private var showDatePicker = false
+    @State private var showError = false
+    @State private var errorMessage = ""
     
     let majors = [
         "Computer Science",
@@ -174,21 +178,38 @@ struct UserInfoFormView: View {
                     
                     // MARK: Continue Button
                     Button {
-                        // Navigate to main app
-                        router.isLocked = false
+                        saveProfile()
                     } label: {
-                        Text("Continue")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(
-                                Capsule()
-                                    .fill(Color.Brand.primary)
-                            )
+                        HStack {
+                            if authManager.isLoading {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            } else {
+                                Text("Continue")
+                                    .font(.headline)
+                            }
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(
+                            Capsule()
+                                .fill(Color.Brand.primary)
+                        )
                     }
+                    .disabled(authManager.isLoading || !isFormValid)
+                    .opacity(isFormValid ? 1.0 : 0.6)
                     .padding(.horizontal, 24)
                     .padding(.top, 8)
+                    
+                    // Error Message
+                    if showError {
+                        Text(errorMessage)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                    }
                     
                     Spacer()
                         .frame(height: 32)
@@ -201,6 +222,50 @@ struct UserInfoFormView: View {
                 Text("Profile Setup")
                     .font(.headline)
                     .foregroundColor(Color.Brand.primary)
+            }
+        }
+    }
+    
+    // MARK: - Validation
+    var isFormValid: Bool {
+        !studentID.isEmpty &&
+        !realName.isEmpty &&
+        !nickname.isEmpty
+    }
+    
+    // MARK: - Save Profile
+    func saveProfile() {
+        guard isFormValid else {
+            errorMessage = "Please fill in all required fields"
+            showError = true
+            return
+        }
+        
+        guard let email = authManager.user?.email else {
+            errorMessage = "Email not found"
+            showError = true
+            return
+        }
+        
+        let profile = User(
+            studentID: studentID,
+            name: realName,
+            nickname: nickname,
+            email: email,
+            faculty: selectedMajor,
+            birthDate: birthDate,
+            warningCount: 0,
+            status: .active,
+            joinedDate: Date()
+        )
+        
+        Task {
+            do {
+                try await authManager.saveUserProfile(profile)
+                router.isLocked = false
+            } catch {
+                errorMessage = "Failed to save profile: \(error.localizedDescription)"
+                showError = true
             }
         }
     }
@@ -239,5 +304,6 @@ struct FormField: View {
     NavigationStack {
         UserInfoFormView()
             .environmentObject(AppRouter())
+            .environmentObject(AuthenticationManager())
     }
 }
