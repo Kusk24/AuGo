@@ -100,3 +100,6 @@ AUGO/GoogleService-Info.plist
 
 # macOS
 .DS_Store
+
+xcuserdata/
+*.xcuserstate
