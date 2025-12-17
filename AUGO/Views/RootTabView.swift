@@ -2,11 +2,15 @@ import SwiftUI
 
 struct RootTabView: View {
     @State private var showAnnouncement = false
+    
+    @StateObject private var announcementCenter = AnnouncementCenter()
+    @StateObject private var campusMapViewModel = CampusMapViewModel()
 
     var body: some View {
         ZStack {
             TabView {
-                // HOME
+
+                // HOME (Campus Map)
                 NavigationStack {
                     HomeView(showAnnouncement: $showAnnouncement)
                         .navigationTitle("Campus Map")
@@ -17,9 +21,11 @@ struct RootTabView: View {
                     Text("Home")
                 }
 
-                // AR CAMERA
+                // AR CAMERA — NO TITLE (clean fullscreen gameplay)
                 NavigationStack {
                     ARCameraView()
+                        .navigationBarTitle("")                // ← remove title text
+                        .navigationBarHidden(true)             // ← hide entire bar
                 }
                 .tabItem {
                     Image(systemName: "camera.viewfinder")
@@ -48,14 +54,14 @@ struct RootTabView: View {
                     Text("Profile")
                 }
             }
-            // 👇 selected tab icon + text = Brand.primary
             .tint(Color.Brand.primary)
-
-            // 👇 block interaction when sheet shown
+            .environmentObject(announcementCenter)
+            .environmentObject(campusMapViewModel)
             .allowsHitTesting(!showAnnouncement)
 
             if showAnnouncement {
                 AnnouncementOverlay(isShowing: $showAnnouncement)
+                    .environmentObject(announcementCenter)
                     .zIndex(1)
             }
         }
