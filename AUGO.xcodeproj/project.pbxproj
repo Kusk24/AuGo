@@ -20,6 +20,17 @@
 		0A48E4A12ECCFF99001A4908 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A48E4A02ECCFF95001A4908 /* HomeView.swift */; };
 		0A48E4A42ECD1B90001A4908 /* AppRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A48E4A32ECD1B8B001A4908 /* AppRouter.swift */; };
 		0A48E4A62ECD1BA4001A4908 /* LockScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A48E4A52ECD1B9D001A4908 /* LockScreen.swift */; };
+		0AB004772EF2E180007DD336 /* PostCluster.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AB004762EF2E17B007DD336 /* PostCluster.swift */; };
+		0AB004792EF2E1C4007DD336 /* PostClusterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AB004782EF2E1BF007DD336 /* PostClusterView.swift */; };
+		0AB0047B2EF2E1DA007DD336 /* ClusterPostListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AB0047A2EF2E1D3007DD336 /* ClusterPostListView.swift */; };
+		0AB261FB2EDFF93400FA8431 /* SingleAnnouncementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AB261FA2EDFF92100FA8431 /* SingleAnnouncementView.swift */; };
+		0AB261FD2EE019B200FA8431 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AB261FC2EE019AD00FA8431 /* Theme.swift */; };
+		0ADE155D2EDDFBEC00F8D6A6 /* CampusPost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ADE155C2EDDFBE600F8D6A6 /* CampusPost.swift */; };
+		0ADE15602EDF60D900F8D6A6 /* CampusMapViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ADE155F2EDF60C800F8D6A6 /* CampusMapViewModel.swift */; };
+		0ADE15622EDF611300F8D6A6 /* PostAnnotationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ADE15612EDF610C00F8D6A6 /* PostAnnotationView.swift */; };
+		0ADE15642EDF63B100F8D6A6 /* Announcement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ADE15632EDF63A100F8D6A6 /* Announcement.swift */; };
+		0ADE15672EDF646400F8D6A6 /* AnnouncementCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ADE15662EDF645E00F8D6A6 /* AnnouncementCenter.swift */; };
+		0ADE15692EDF64A100F8D6A6 /* AnnouncementOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ADE15682EDF649600F8D6A6 /* AnnouncementOverlay.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -37,6 +48,17 @@
 		0A48E4A02ECCFF95001A4908 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		0A48E4A32ECD1B8B001A4908 /* AppRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRouter.swift; sourceTree = "<group>"; };
 		0A48E4A52ECD1B9D001A4908 /* LockScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockScreen.swift; sourceTree = "<group>"; };
+		0AB004762EF2E17B007DD336 /* PostCluster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostCluster.swift; sourceTree = "<group>"; };
+		0AB004782EF2E1BF007DD336 /* PostClusterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostClusterView.swift; sourceTree = "<group>"; };
+		0AB0047A2EF2E1D3007DD336 /* ClusterPostListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClusterPostListView.swift; sourceTree = "<group>"; };
+		0AB261FA2EDFF92100FA8431 /* SingleAnnouncementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SingleAnnouncementView.swift; sourceTree = "<group>"; };
+		0AB261FC2EE019AD00FA8431 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		0ADE155C2EDDFBE600F8D6A6 /* CampusPost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CampusPost.swift; sourceTree = "<group>"; };
+		0ADE155F2EDF60C800F8D6A6 /* CampusMapViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CampusMapViewModel.swift; sourceTree = "<group>"; };
+		0ADE15612EDF610C00F8D6A6 /* PostAnnotationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostAnnotationView.swift; sourceTree = "<group>"; };
+		0ADE15632EDF63A100F8D6A6 /* Announcement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Announcement.swift; sourceTree = "<group>"; };
+		0ADE15662EDF645E00F8D6A6 /* AnnouncementCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncementCenter.swift; sourceTree = "<group>"; };
+		0ADE15682EDF649600F8D6A6 /* AnnouncementOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncementOverlay.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -72,8 +94,9 @@
 				0A48E46A2ECCE941001A4908 /* AUGOApp.swift */,
 				0A48E4A32ECD1B8B001A4908 /* AppRouter.swift */,
 				0A48E4A52ECD1B9D001A4908 /* LockScreen.swift */,
-				0A48E4A22ECD0B5E001A4908 /* Models */,
+				0ADE15652EDF642D00F8D6A6 /* ViewModels */,
 				0A48E4712ECCE957001A4908 /* Views */,
+				0ADE155B2EDDFBC700F8D6A6 /* Models */,
 				0A48E4722ECCE961001A4908 /* Helpers */,
 				0A48E4702ECCE94A001A4908 /* Resources */,
 			);
@@ -103,6 +126,7 @@
 		0A48E4722ECCE961001A4908 /* Helpers */ = {
 			isa = PBXGroup;
 			children = (
+				0AB261FC2EE019AD00FA8431 /* Theme.swift */,
 				0A48E4732ECCE9A3001A4908 /* BrandColors.swift */,
 			);
 			path = Helpers;
@@ -115,6 +139,11 @@
 				0A48E47D2ECCEAA9001A4908 /* CampusMapView.swift */,
 				0A48E49C2ECCF93C001A4908 /* CreatePostView.swift */,
 				0A48E49E2ECCFAFE001A4908 /* CreatePostMapView.swift */,
+				0ADE15612EDF610C00F8D6A6 /* PostAnnotationView.swift */,
+				0AB004782EF2E1BF007DD336 /* PostClusterView.swift */,
+				0AB0047A2EF2E1D3007DD336 /* ClusterPostListView.swift */,
+				0ADE15682EDF649600F8D6A6 /* AnnouncementOverlay.swift */,
+				0AB261FA2EDFF92100FA8431 /* SingleAnnouncementView.swift */,
 			);
 			path = Home;
 			sourceTree = "<group>";
@@ -143,11 +172,23 @@
 			path = Profile;
 			sourceTree = "<group>";
 		};
-		0A48E4A22ECD0B5E001A4908 /* Models */ = {
+		0ADE155B2EDDFBC700F8D6A6 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				0AB004762EF2E17B007DD336 /* PostCluster.swift */,
+				0ADE15632EDF63A100F8D6A6 /* Announcement.swift */,
+				0ADE155C2EDDFBE600F8D6A6 /* CampusPost.swift */,
 			);
 			path = Models;
+			sourceTree = "<group>";
+		};
+		0ADE15652EDF642D00F8D6A6 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				0ADE15662EDF645E00F8D6A6 /* AnnouncementCenter.swift */,
+				0ADE155F2EDF60C800F8D6A6 /* CampusMapViewModel.swift */,
+			);
+			path = ViewModels;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -222,16 +263,27 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0ADE15622EDF611300F8D6A6 /* PostAnnotationView.swift in Sources */,
+				0ADE15602EDF60D900F8D6A6 /* CampusMapViewModel.swift in Sources */,
 				0A48E4802ECCEADE001A4908 /* ARCameraView.swift in Sources */,
 				0A48E49F2ECCFB06001A4908 /* CreatePostMapView.swift in Sources */,
 				0A48E47C2ECCEAA3001A4908 /* LeaderBoardView.swift in Sources */,
+				0AB261FB2EDFF93400FA8431 /* SingleAnnouncementView.swift in Sources */,
 				0A48E4A12ECCFF99001A4908 /* HomeView.swift in Sources */,
+				0ADE155D2EDDFBEC00F8D6A6 /* CampusPost.swift in Sources */,
 				0A48E4A62ECD1BA4001A4908 /* LockScreen.swift in Sources */,
+				0ADE15642EDF63B100F8D6A6 /* Announcement.swift in Sources */,
 				0A48E47A2ECCEA96001A4908 /* ProfileView.swift in Sources */,
 				0A48E4852ECCEBCF001A4908 /* RootTabView.swift in Sources */,
+				0ADE15672EDF646400F8D6A6 /* AnnouncementCenter.swift in Sources */,
+				0AB004792EF2E1C4007DD336 /* PostClusterView.swift in Sources */,
 				0A48E49D2ECCF948001A4908 /* CreatePostView.swift in Sources */,
 				0A48E4A42ECD1B90001A4908 /* AppRouter.swift in Sources */,
+				0AB0047B2EF2E1DA007DD336 /* ClusterPostListView.swift in Sources */,
+				0AB004772EF2E180007DD336 /* PostCluster.swift in Sources */,
 				0A48E46D2ECCE941001A4908 /* AUGOApp.swift in Sources */,
+				0ADE15692EDF64A100F8D6A6 /* AnnouncementOverlay.swift in Sources */,
+				0AB261FD2EE019B200FA8431 /* Theme.swift in Sources */,
 				0A48E47E2ECCEAC6001A4908 /* CampusMapView.swift in Sources */,
 				0A48E4742ECCE9AE001A4908 /* BrandColors.swift in Sources */,
 			);
@@ -366,6 +418,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -373,6 +426,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -397,6 +451,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -404,6 +459,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
