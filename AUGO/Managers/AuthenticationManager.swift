@@ -15,6 +15,7 @@ class AuthenticationManager: ObservableObject {
     @Published var isProfileComplete = false
     @Published var errorMessage: String?
     @Published var isLoading = false
+    @Published var isCheckingAuth = true // NEW: for initial auth check
     
     private let auth = Auth.auth()
     private let db = Firestore.firestore()
@@ -33,6 +34,7 @@ class AuthenticationManager: ObservableObject {
         } else {
             self.isAuthenticated = false
             self.isProfileComplete = false
+            self.isCheckingAuth = false // Done checking, no user
         }
     }
     
@@ -57,12 +59,12 @@ class AuthenticationManager: ObservableObject {
     private func performGoogleSignIn(hostedDomain: String? = nil) async {
         
         // Get root view controller (compatible with multi-scene apps)
-        let presentingViewController: UIViewController? = await {
+        let presentingViewController: UIViewController? = {
             if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                let root = scene.keyWindow?.rootViewController {
                 return root
             }
-            return UIApplication.shared.windows.first?.rootViewController
+            return nil
         }()
         
         guard let presentingViewController = presentingViewController else {
@@ -131,14 +133,15 @@ class AuthenticationManager: ObservableObject {
         db.collection("users").document(uid).getDocument { [weak self] snapshot, error in
             guard let self = self else { return }
             
-            if let error = error {
-                print("Error fetching profile: \(error)")
-                self.isProfileComplete = false
-                return
-            }
-            
-            if let data = snapshot?.data() {
-                do {
+            Task { @MainActor in
+                if let error = error {
+                    print("Error fetching profile: \(error)")
+                    self.isProfileComplete = false
+                    self.isCheckingAuth = false
+                    return
+                }
+                
+                if let data = snapshot?.data() {
                     // Manually decode to handle @DocumentID
                     let profile = User(
                         id: uid,
@@ -150,16 +153,16 @@ class AuthenticationManager: ObservableObject {
                         birthDate: (data["birthDate"] as? Timestamp)?.dateValue() ?? Date(),
                         warningCount: data["warningCount"] as? Int ?? 0,
                         status: User.UserStatus(rawValue: data["status"] as? String ?? "active") ?? .active,
-                        joinedDate: (data["joinedDate"] as? Timestamp)?.dateValue() ?? Date()
+                        joinedDate: (data["joinedDate"] as? Timestamp)?.dateValue() ?? Date(),
+                        score: data["score"] as? Int ?? 0
                     )
                     self.userProfile = profile
                     self.isProfileComplete = true
-                } catch {
-                    print("Error decoding profile: \(error)")
+                    self.isCheckingAuth = false
+                } else {
                     self.isProfileComplete = false
+                    self.isCheckingAuth = false
                 }
-            } else {
-                self.isProfileComplete = false
             }
         }
     }
@@ -183,7 +186,8 @@ class AuthenticationManager: ObservableObject {
                 "birthDate": profile.birthDate,
                 "warningCount": profile.warningCount,
                 "status": profile.status.rawValue,
-                "joinedDate": profile.joinedDate
+                "joinedDate": profile.joinedDate,
+                "score": profile.score
             ]
             
             try await db.collection("users").document(uid).setData(data)
@@ -210,9 +214,35 @@ class AuthenticationManager: ObservableObject {
             self.userProfile = nil
             self.isAuthenticated = false
             self.isProfileComplete = false
+            self.isCheckingAuth = false
         } catch {
             errorMessage = error.localizedDescription
             print("Error signing out: \(error)")
         }
+    }
+    
+    // MARK: - Fetch User Rank
+    func fetchUserRank(completion: @escaping (Int) -> Void) {
+        guard let currentScore = userProfile?.score else {
+            completion(0)
+            return
+        }
+        
+        // Query all users with score higher than current user
+        db.collection("users")
+            .whereField("score", isGreaterThan: currentScore)
+            .getDocuments { snapshot, error in
+                Task { @MainActor in
+                    if let error = error {
+                        print("Error fetching rank: \(error)")
+                        completion(0)
+                        return
+                    }
+                    
+                    // Rank is number of users with higher score + 1
+                    let rank = (snapshot?.documents.count ?? 0) + 1
+                    completion(rank)
+                }
+            }
     }
 }
