@@ -43,6 +43,7 @@
 		C5FAEAD42EE5988D00ED4C27 /* Post.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5FAEAD32EE5988D00ED4C27 /* Post.swift */; };
 		C5FAEAD62EE5989400ED4C27 /* Report.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5FAEAD52EE5989400ED4C27 /* Report.swift */; };
 		C5FAEAD82EE5989B00ED4C27 /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5FAEAD72EE5989B00ED4C27 /* User.swift */; };
+		E6ADEDF387A847C39FE5149A /* PostManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 608C6CCA8DD9437BBA6FEC21 /* PostManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -80,6 +81,7 @@
 		C5FAEAD32EE5988D00ED4C27 /* Post.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Post.swift; sourceTree = "<group>"; };
 		C5FAEAD52EE5989400ED4C27 /* Report.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Report.swift; sourceTree = "<group>"; };
 		C5FAEAD72EE5989B00ED4C27 /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
+		608C6CCA8DD9437BBA6FEC21 /* PostManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -237,6 +239,7 @@
 		0A48E4AE2EE00610001A4908 /* Managers */ = {
 			isa = PBXGroup;
 			children = (
+				608C6CCA8DD9437BBA6FEC21 /* PostManager.swift */,
 				0A48E4AD2EE00600001A4908 /* AuthenticationManager.swift */,
 			);
 			path = Managers;
@@ -323,6 +326,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E6ADEDF387A847C39FE5149A /* PostManager.swift in Sources */,
 				0ADE15622EDF611300F8D6A6 /* PostAnnotationView.swift in Sources */,
 				0ADE15602EDF60D900F8D6A6 /* CampusMapViewModel.swift in Sources */,
 				0A48E4802ECCEADE001A4908 /* ARCameraView.swift in Sources */,

@@ -1,12 +1,16 @@
 import SwiftUI
+import FirebaseAuth
 
 struct ProfileView: View {
     
     @EnvironmentObject var authManager: AuthenticationManager
+    @StateObject private var postManager = PostManager()
 
     @State private var notificationsOn = true
     @State private var showLogoutAlert = false
     @State private var userRank: Int = 0
+    @State private var showDeleteAlert = false
+    @State private var postToDelete: Post?
     
     // Computed properties for real user data
     private var userName: String {
@@ -87,13 +91,33 @@ struct ProfileView: View {
                         authManager.fetchUserRank { rank in
                             userRank = rank
                         }
+                        
+                        // Fetch user posts
+                        if let userId = authManager.user?.uid {
+                            postManager.fetchUserPosts(userId: userId)
+                        }
                     }
 
                     // MARK: Today Post
                     VStack(alignment: .leading, spacing: 12) {
                         SectionTitle("Today Post")
 
-                        TodayPostCard()
+                        if postManager.userPosts.isEmpty {
+                            Text("No posts yet. Create your first post!")
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                                .padding()
+                        } else {
+                            ForEach(postManager.userPosts.prefix(3)) { post in
+                                TodayPostCard(
+                                    post: post,
+                                    onDelete: {
+                                        postToDelete = post
+                                        showDeleteAlert = true
+                                    }
+                                )
+                            }
+                        }
                     }
                     .padding(.horizontal, 16)
 
@@ -162,9 +186,33 @@ struct ProfileView: View {
         } message: {
             Text("Are you sure you want to logout?")
         }
-        // navigation title is already set in RootTabView:
-        // .navigationTitle("Profile")
-        // .navigationBarTitleDisplayMode(.large)
+        .alert("Delete Post", isPresented: $showDeleteAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                if let post = postToDelete {
+                    Task {
+                        await deletePost(post)
+                    }
+                }
+            }
+        } message: {
+            Text("Are you sure you want to delete this post?")
+        }
+        .onDisappear {
+            postManager.stopListening()
+        }
+    }
+    
+    // MARK: - Delete Post
+    private func deletePost(_ post: Post) async {
+        guard let postId = post.id else { return }
+        
+        do {
+            try await postManager.deletePost(postId)
+            print("✅ Post deleted")
+        } catch {
+            print("❌ Error deleting post: \(error)")
+        }
     }
 }
 
@@ -206,6 +254,24 @@ private struct ProfileStatCard: View {
 }
 
 private struct TodayPostCard: View {
+    let post: Post
+    let onDelete: () -> Void
+    
+    private var timeAgo: String {
+        let interval = Date().timeIntervalSince(post.date)
+        let hours = Int(interval / 3600)
+        let days = Int(interval / 86400)
+        
+        if days > 0 {
+            return "Posted \(days) day\(days == 1 ? "" : "s") ago"
+        } else if hours > 0 {
+            return "Posted \(hours) hour\(hours == 1 ? "" : "s") ago"
+        } else {
+            let minutes = max(1, Int(interval / 60))
+            return "Posted \(minutes) minute\(minutes == 1 ? "" : "s") ago"
+        }
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
 
@@ -214,29 +280,31 @@ private struct TodayPostCard: View {
                     .fill(Color.Brand.primary.opacity(0.15))
                     .frame(width: 28, height: 28)
                     .overlay(
-                        Image(systemName: "bolt.heart")
+                        Image(systemName: iconForCategory)
                             .foregroundColor(Color.Brand.primary)
                             .font(.system(size: 14, weight: .semibold))
                     )
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Casual")
+                    Text(post.category.rawValue)
                         .font(.caption)
                         .foregroundColor(.primary)
 
-                    Text("Posted 4 hours ago")
+                    Text(timeAgo)
                         .font(.caption2)
                         .foregroundColor(.gray)
                 }
 
                 Spacer()
 
-                Image(systemName: "trash")
-                    .foregroundColor(.red.opacity(0.8))
-                    .font(.system(size: 14, weight: .semibold))
+                Button(action: onDelete) {
+                    Image(systemName: "trash")
+                        .foregroundColor(.red.opacity(0.8))
+                        .font(.system(size: 14, weight: .semibold))
+                }
             }
 
-            Text("We’re having a multicultural food event. All come grab some food! 🍱🍜🌯✨")
+            Text(post.content)
                 .font(.subheadline)
                 .foregroundColor(.primary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -244,12 +312,12 @@ private struct TodayPostCard: View {
             HStack(spacing: 16) {
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.up")
-                    Text("115")
+                    Text("\(post.likeCount)")
                 }
 
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.down")
-                    Text("2")
+                    Text("\(post.dislikeCount)")
                 }
             }
             .font(.caption)
@@ -261,6 +329,21 @@ private struct TodayPostCard: View {
                 .fill(Color.white)
                 .shadow(color: .black.opacity(0.06), radius: 4, y: 3)
         )
+    }
+    
+    private var iconForCategory: String {
+        switch post.category {
+        case .casual:
+            return "bolt.heart"
+        case .event:
+            return "calendar"
+        case .question:
+            return "questionmark.circle"
+        case .announcement:
+            return "megaphone"
+        case .arChallenge:
+            return "arkit"
+        }
     }
 }
 
