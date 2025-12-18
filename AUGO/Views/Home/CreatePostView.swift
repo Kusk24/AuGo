@@ -4,11 +4,15 @@ struct CreatePostView: View {
     @Binding var isPresentedFromHome: Bool
 
     @State private var message: String = ""
-    @State private var category: String = "Category"
+    @State private var selectedCategory: PostCategory? = nil
+
     @State private var goToMap = false
+    @State private var pendingMessage: String = ""
+    @State private var pendingCategory: PostCategory = .casual
 
     private var canPost: Bool {
         !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        && selectedCategory != nil
     }
 
     var body: some View {
@@ -16,9 +20,8 @@ struct CreatePostView: View {
             Color.Brand.primary.opacity(0.06)
                 .ignoresSafeArea()
 
-            VStack(spacing: 12) {          // ↓ smaller spacing
+            VStack(spacing: 12) {
 
-                // Card
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
                         Image("Richard")
@@ -32,15 +35,16 @@ struct CreatePostView: View {
 
                         Spacer()
 
-                        // Category chip with Brand color
                         Menu {
-                            Button("Lost") { category = "Lost" }
-                            Button("Event") { category = "Event" }
-                            Button("General") { category = "General" }
+                            ForEach(PostCategory.allCases) { category in
+                                Button(category.rawValue) {
+                                    selectedCategory = category
+                                }
+                            }
                         } label: {
                             HStack(spacing: 4) {
                                 Image(systemName: "mappin.and.ellipse")
-                                Text(category)
+                                Text(selectedCategory?.rawValue ?? "Category")
                                 Image(systemName: "chevron.down")
                                     .font(.caption2)
                             }
@@ -78,13 +82,13 @@ struct CreatePostView: View {
                 )
                 .padding(.horizontal)
 
-                // Button now sits right under the card
                 Button {
-                    if canPost {
-                        goToMap = true
-                    }
+                    guard let selectedCategory else { return }
+                    pendingMessage = message
+                    pendingCategory = selectedCategory
+                    goToMap = true
                 } label: {
-                    Text("Post")
+                    Text("Choose location")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
@@ -99,28 +103,12 @@ struct CreatePostView: View {
         }
         .navigationTitle("Create Post")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: 4) {
-                    Text("200")
-                        .font(.subheadline.bold())
-
-                    ZStack {
-                        Circle()
-                            .fill(Color.Brand.coin)
-                            .frame(width: 22, height: 22)
-                        Text("£")
-                            .font(.caption.bold())
-                            .foregroundColor(.white)
-                    }
-
-                    Image(systemName: "bell.fill")
-                        .foregroundColor(Color.Brand.primary)
-                }
-            }
-        }
         .navigationDestination(isPresented: $goToMap) {
-            CreatePostMapView(isPresentedFromHome: $isPresentedFromHome)
+            CreatePostMapView(
+                isPresentedFromHome: $isPresentedFromHome,
+                message: pendingMessage,
+                category: pendingCategory
+            )
         }
     }
 }

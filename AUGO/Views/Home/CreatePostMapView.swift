@@ -1,53 +1,63 @@
 import SwiftUI
+import MapKit
 
 struct CreatePostMapView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var isPresentedFromHome: Bool
+
+    let message: String
+    let category: PostCategory
+
+    @EnvironmentObject var mapViewModel: CampusMapViewModel
+
+    @State private var cameraPosition: MapCameraPosition = .automatic
+    @State private var currentCenter: CLLocationCoordinate2D?
 
     var body: some View {
         ZStack {
             Color.Brand.primary.opacity(0.06)
                 .ignoresSafeArea()
 
-            VStack(spacing: 12) {          // ↓ smaller spacing
+            VStack(spacing: 12) {
 
                 ZStack {
                     RoundedRectangle(cornerRadius: 24)
                         .fill(Color(UIColor.systemGray6))
-                        .overlay(
-                            Image("CampusMap")
-                                .resizable()
-                                .scaledToFill()
-                                .clipShape(RoundedRectangle(cornerRadius: 24))
-                        )
                         .shadow(color: .black.opacity(0.08), radius: 6, y: 3)
+                        .overlay(
+                            Map(position: $cameraPosition) {
+                                UserAnnotation()
+                            }
+                            .onMapCameraChange { context in
+                                currentCenter = context.region.center
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: 24))
+                        )
 
-                    // Marker
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            Circle()
-                                .fill(Color.Brand.coin)
-                                .frame(width: 26, height: 26)
-                                .overlay(
-                                    Text("1")
-                                        .font(.caption.bold())
-                                        .foregroundColor(.white)
-                                )
-                                .padding(.trailing, 40)
-                                .padding(.bottom, 60)
-                        }
-                    }
+                    // Center marker showing where the post will be
+                    Image(systemName: "mappin.circle.fill")
+                        .font(.system(size: 32))
+                        .foregroundColor(colorFor(category))
                 }
                 .padding(.horizontal)
 
-                // Button right under the map
+                Text("Drag the map to adjust where your post will appear.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal)
+
                 Button {
+                    let coord = currentCenter ?? mapViewModel.campusRegion.center
+                    mapViewModel.addPost(
+                        message: message,
+                        category: category,
+                        author: "You",
+                        at: coord
+                    )
                     dismiss()
                     isPresentedFromHome = false
                 } label: {
-                    Text("Confirm post")
+                    Text("Confirm post location")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
@@ -59,27 +69,21 @@ struct CreatePostMapView: View {
                 .padding(.bottom, 16)
             }
         }
-        .navigationTitle("Create Post")
+        .onAppear {
+            cameraPosition = .region(mapViewModel.campusRegion)
+        }
+        .navigationTitle("Choose Location")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: 4) {
-                    Text("200")
-                        .font(.subheadline.bold())
+    }
 
-                    ZStack {
-                        Circle()
-                            .fill(Color.Brand.coin)
-                            .frame(width: 22, height: 22)
-                        Text("£")
-                            .font(.caption.bold())
-                            .foregroundColor(.white)
-                    }
-
-                    Image(systemName: "bell.fill")
-                        .foregroundColor(Color.Brand.primary)
-                }
-            }
+    private func colorFor(_ category: PostCategory) -> Color {
+        switch category {
+        case .casual:
+            return .teal
+        case .lostFound:
+            return .red
+        case .complaint:
+            return Color(red: 1.0, green: 0.84, blue: 0.0)
         }
     }
 }

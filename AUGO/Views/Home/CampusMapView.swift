@@ -1,53 +1,133 @@
 import SwiftUI
+import MapKit
 
 struct CampusMapView: View {
     @Binding var showAnnouncement: Bool
+
+    @EnvironmentObject var viewModel: CampusMapViewModel
+    @EnvironmentObject var announcementCenter: AnnouncementCenter
+
+    @State private var cameraPosition: MapCameraPosition = .automatic
+
+    @State private var selectedAnnouncement: Announcement?
+    @State private var showSingleAnnouncement = false
+
     @State private var isPresentingCreatePost = false
+
+    @State private var selectedCluster: PostCluster?
+    @State private var showClusterSheet = false
+
+    // MARK: - FILTER
+    @State private var selectedCategories: Set<PostCategory> = Set(PostCategory.allCases)
+
+    private var filteredClusters: [PostCluster] {
+        viewModel.clusters.compactMap { cluster in
+            let posts = cluster.posts.filter {
+                selectedCategories.contains($0.category)
+            }
+            guard !posts.isEmpty else { return nil }
+            return PostCluster(coordinate: cluster.coordinate, posts: posts)
+        }
+    }
 
     var body: some View {
         ZStack {
             Color.Brand.primary.opacity(0.06)
                 .ignoresSafeArea()
 
-            VStack(spacing: 16) {
-                // Map card + + button
+            VStack {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    RoundedRectangle(cornerRadius: 24)
                         .fill(Color(UIColor.systemGray6))
+                        .shadow(radius: 6)
                         .overlay(
-                            Image("CampusMap")
-                                .resizable()
-                                .scaledToFill()
+                            ZStack {
+
+                                // MARK: - MAP
+                                Map(position: $cameraPosition) {
+
+                                    UserAnnotation()
+
+                                    ForEach(filteredClusters) { cluster in
+                                        Annotation("", coordinate: cluster.coordinate) {
+                                            if cluster.count == 1 {
+                                                let post = cluster.posts[0]
+                                                PostAnnotationView(
+                                                    post: post,
+                                                    isSelected: viewModel.selectedPostID == post.id
+                                                ) {
+                                                    viewModel.toggleSelected(post)
+                                                }
+                                            } else {
+                                                PostClusterView(cluster: cluster) {
+                                                    selectedCluster = cluster
+                                                    showClusterSheet = true
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    ForEach(announcementCenter.announcements) { ann in
+                                        if let coord = ann.coordinate {
+                                            Annotation("", coordinate: coord) {
+                                                AnnouncementPinView(announcement: ann) {
+                                                    announcementCenter.markAsRead(ann)
+                                                    selectedAnnouncement = ann
+                                                    showSingleAnnouncement = true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                .mapControls {
+                                    MapCompass()
+                                    MapPitchToggle()
+                                    MapUserLocationButton()
+                                }
                                 .clipShape(RoundedRectangle(cornerRadius: 24))
-                        )
-                        .shadow(color: .black.opacity(0.08), radius: 6, y: 3)
-                        // 👉 tap map to show sheet
-                        .onTapGesture {
-                            showAnnouncement = true
-                        }
 
-                    // Hamburger menu
-                    VStack {
-                        HStack {
-                            Button {} label: {
-                                RoundedRectangle(cornerRadius: 10)
-                                    .fill(.white)
-                                    .shadow(radius: 2)
-                                    .frame(width: 40, height: 32)
-                                    .overlay(
-                                        Image(systemName: "line.3.horizontal")
-                                            .foregroundColor(.black)
-                                    )
+                                // MARK: - FILTER MENU (INLINE)
+                                VStack {
+                                    HStack {
+                                        Menu {
+                                            ForEach(PostCategory.allCases) { category in
+                                                Button {
+                                                    if selectedCategories.contains(category) {
+                                                        selectedCategories.remove(category)
+                                                    } else {
+                                                        selectedCategories.insert(category)
+                                                    }
+                                                } label: {
+                                                    HStack {
+                                                        Text(category.rawValue)
+                                                        Spacer()
+                                                        Image(systemName:
+                                                            selectedCategories.contains(category)
+                                                            ? "checkmark.square.fill"
+                                                            : "square"
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        } label: {
+                                            Image(systemName: "slider.horizontal.3")
+                                                .font(.title3)
+                                                .foregroundStyle(Color.Brand.primary)
+                                                .padding(10)
+                                                .background(.white)
+                                                .clipShape(Circle())
+                                                .shadow(radius: 4)
+                                        }
+                                        .padding()
+
+                                        Spacer()
+                                    }
+                                    Spacer()
+                                }
                             }
-                            Spacer()
-                        }
-                        .padding(.top, 16)
-                        .padding(.leading, 16)
+                        )
 
-                        Spacer()
-                    }
-
-                    // Floating +
+                    // MARK: - CREATE POST BUTTON
                     VStack {
                         Spacer()
                         HStack {
@@ -55,123 +135,64 @@ struct CampusMapView: View {
                             Button {
                                 isPresentingCreatePost = true
                             } label: {
-                                ZStack {
-                                    Circle()
-                                        .fill(Color.Brand.primary)
-                                        .frame(width: 56, height: 56)
-                                        .shadow(color: .black.opacity(0.25),
-                                                radius: 8, y: 4)
-
-                                    Image(systemName: "plus")
-                                        .foregroundColor(.white)
-                                        .font(.title3.bold())
-                                }
+                                Circle()
+                                    .fill(Color.Brand.primary)
+                                    .frame(width: 56, height: 56)
+                                    .overlay(
+                                        Image(systemName: "plus")
+                                            .foregroundColor(.white)
+                                            .font(.title3.bold())
+                                    )
+                                    .shadow(radius: 6)
                             }
-                            .padding(.trailing, 20)
-                            .padding(.bottom, 20)
+                            .padding()
                         }
                     }
                 }
-                .padding(.horizontal)
-                .padding(.top, 8)
-
-                Spacer()
+                .padding()
             }
         }
-        .navigationBarTitleDisplayMode(.large)
+        .onAppear {
+            cameraPosition = .region(viewModel.campusRegion)
+            viewModel.rebuildClusters()
+        }
         .toolbar {
-            ToolbarItemGroup(placement: .navigationBarTrailing) {
-                HStack(spacing: 4) {
-                    Text("200")
-                        .font(.subheadline.bold())
-
-                    ZStack {
-                        Circle()
-                            .fill(Color.Brand.coin)
-                            .frame(width: 22, height: 22)
-                        Text("£")
-                            .font(.caption.bold())
-                            .foregroundColor(.white)
-                    }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    announcementCenter.markAllAsRead()
+                    showAnnouncement = true
+                } label: {
+                    Image(systemName:
+                        announcementCenter.unreadCount > 0
+                        ? "bell.badge.fill"
+                        : "bell.fill"
+                    )
+                    .symbolRenderingMode(
+                        announcementCenter.unreadCount > 0
+                        ? .palette
+                        : .monochrome
+                    )
+                    .foregroundStyle(
+                        announcementCenter.unreadCount > 0
+                        ? AnyShapeStyle(Color.red)           // dot
+                        : AnyShapeStyle(Color.Brand.primary),// bell (read)
+                        Color.Brand.primary                  // bell (unread)
+                    )
                 }
-
-                Button {} label: {
-                    Image(systemName: "bell.fill")
-                        .foregroundColor(Color.Brand.primary)
-                }
+            }
+        }
+        .sheet(isPresented: $showSingleAnnouncement) {
+            if let ann = selectedAnnouncement {
+                SingleAnnouncementView(announcement: ann)
+            }
+        }
+        .sheet(isPresented: $showClusterSheet) {
+            if let cluster = selectedCluster {
+                ClusterPostListView(posts: cluster.posts)
             }
         }
         .navigationDestination(isPresented: $isPresentingCreatePost) {
             CreatePostView(isPresentedFromHome: $isPresentingCreatePost)
         }
-    }
-}
-
-// MARK: - Announcement overlay (same file)
-
-struct AnnouncementOverlay: View {
-    @Binding var isShowing: Bool
-
-    var body: some View {
-        ZStack {
-            // Dimmed background – blocks taps everywhere
-            Color.black.opacity(0.35)
-                .ignoresSafeArea()
-                .onTapGesture {
-                    isShowing = false
-                }
-
-            // Center card
-            VStack(spacing: 0) {
-                HStack {
-                    Spacer()
-                    Button {
-                        isShowing = false
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.black)
-                            .padding(8)
-                    }
-                }
-
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Online Pre-registration Period for 2/2025")
-                            .font(.headline)
-                            .foregroundColor(.red)
-
-                        Text("""
-Dear VMES students,
-
-• 60x – 65x students (All faculties) on Tuesday, October 21st, 2025 between 11:45 – 12:30.
-• 66x students (All faculties) on Tuesday, October 21st, 2025 between 14:45 – 15:30.
-
-If 60–66x students miss their recommended periods, you have another chance to pre-register on Tuesday, October 21st, 2025 between 15:30 – 16:30.
-
-• 67x students (All faculties) on Wednesday, October 22nd, 2025 between 10:30 – 11:15.
-• 68x students (All faculties) on Wednesday, October 22nd, 2025 between 13:30 – 14:15.
-
-Sincerely yours,
-Allapon Hutasin
-Assistant Dean for Academic Affairs
-Vincent Mary School of Engineering, Science and Technology
-""")
-                            .font(.system(size: 13))
-                            .foregroundColor(.black)
-                    }
-                    .padding()
-                }
-            }
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.white)
-                    .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
-            )
-            .padding(.horizontal, 24)
-            .padding(.vertical, 120)
-        }
-        .transition(.opacity.combined(with: .scale))
-        .animation(.easeInOut, value: isShowing)
     }
 }
