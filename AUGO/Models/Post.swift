@@ -13,12 +13,14 @@ struct Post: Codable, Identifiable {
     var reportCount: Int
     var status: PostStatus
     
-    enum PostCategory: String, Codable {
-        case general
-        case event
-        case question
-        case announcement
-        case arChallenge
+    enum PostCategory: String, Codable, CaseIterable, Identifiable {
+        case casual = "Casual"
+        case event = "Event"
+        case question = "Question"
+        case announcement = "Announcement"
+        case arChallenge = "AR Challenge"
+        
+        var id: String { rawValue }
     }
     
     enum PostStatus: String, Codable {
