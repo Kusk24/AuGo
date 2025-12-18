@@ -1,12 +1,17 @@
 // AUGOApp.swift
 import SwiftUI
+import FirebaseCore
 
 @main
 struct AUGOApp: App {
 
     @StateObject private var router = AppRouter()
+    @StateObject private var authManager = AuthenticationManager()
 
     init() {
+        // Configure Firebase
+        FirebaseApp.configure()
+        
         // --- NAV BAR (Brand purple titles, like HealthyMe) ---
         let navAppearance = UINavigationBarAppearance()
         navAppearance.configureWithTransparentBackground()
@@ -30,6 +35,11 @@ struct AUGOApp: App {
         WindowGroup {
             router.rootView()
                 .environmentObject(router)
+                .environmentObject(authManager)
+                .onAppear {
+                    // Connect router to auth state changes
+                    router.observeAuthState(authManager: authManager)
+                }
         }
     }
 }
