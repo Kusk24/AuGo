@@ -3,62 +3,59 @@ import SwiftUI
 struct RootTabView: View {
     @State private var showAnnouncement = false
     
+    // Global State for this tab session
     @StateObject private var announcementCenter = AnnouncementCenter()
     @StateObject private var campusMapViewModel = CampusMapViewModel()
 
     var body: some View {
         ZStack {
             TabView {
-
-                // HOME (Campus Map)
+                // TAB 1: CAMPUS MAP
                 NavigationStack {
-                    HomeView(showAnnouncement: $showAnnouncement)
+                    CampusMapView(showAnnouncement: $showAnnouncement)
                         .navigationTitle("Campus Map")
                         .navigationBarTitleDisplayMode(.large)
                 }
                 .tabItem {
-                    Image(systemName: "house.fill")
-                    Text("Home")
+                    Label("Home", systemImage: "house.fill")
                 }
 
-                // AR CAMERA — NO TITLE (clean fullscreen gameplay)
+                // TAB 2: AR CAMERA
                 NavigationStack {
                     ARCameraView()
-                        .navigationBarTitle("")                // ← remove title text
-                        .navigationBarHidden(true)             // ← hide entire bar
+                        .navigationBarHidden(true)
                 }
                 .tabItem {
-                    Image(systemName: "camera.viewfinder")
-                    Text("AR Camera")
+                    Label("AR Camera", systemImage: "camera.viewfinder")
                 }
 
-                // LEADERBOARD
+                // TAB 3: LEADERBOARD
                 NavigationStack {
                     LeaderboardView()
                         .navigationTitle("Leaderboard")
                         .navigationBarTitleDisplayMode(.large)
                 }
                 .tabItem {
-                    Image(systemName: "chart.bar.fill")
-                    Text("Leaderboard")
+                    Label("Leaderboard", systemImage: "chart.bar.fill")
                 }
 
-                // PROFILE
+                // TAB 4: PROFILE
                 NavigationStack {
                     ProfileView()
                         .navigationTitle("Profile")
                         .navigationBarTitleDisplayMode(.large)
                 }
                 .tabItem {
-                    Image(systemName: "person.fill")
-                    Text("Profile")
+                    Label("Profile", systemImage: "person.fill")
                 }
             }
             .tint(Color.Brand.primary)
+            // Injecting objects so all child views can access them
             .environmentObject(announcementCenter)
             .environmentObject(campusMapViewModel)
             .allowsHitTesting(!showAnnouncement)
 
+            // THE ANNOUNCEMENT OVERLAY
             if showAnnouncement {
                 AnnouncementOverlay(isShowing: $showAnnouncement)
                     .environmentObject(announcementCenter)

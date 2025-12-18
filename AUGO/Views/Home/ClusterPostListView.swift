@@ -1,24 +1,24 @@
 import SwiftUI
 
 struct ClusterPostListView: View {
-    let posts: [CampusPost]
+    let posts: [Post]
 
     var body: some View {
         NavigationStack {
             List {
                 ForEach(posts) { post in
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(post.message)
+                        Text(post.content)
                             .font(.body)
 
                         HStack {
-                            Text(post.author)
+                            Text(post.userId)
                                 .font(.caption.bold())
                                 .foregroundColor(.secondary)
 
                             Spacer()
 
-                            Text(relativeTime(from: post.createdAt))
+                            Text(relativeTime(from: post.date))
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                         }

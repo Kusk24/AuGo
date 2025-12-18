@@ -1,10 +1,10 @@
 import SwiftUI
 import FirebaseAuth
+import Combine
 
 struct ProfileView: View {
-    
     @EnvironmentObject var authManager: AuthenticationManager
-    @StateObject private var postManager = PostManager()
+    @EnvironmentObject var postManager: PostManager // Shared global instance
 
     @State private var notificationsOn = true
     @State private var showLogoutAlert = false
@@ -12,7 +12,6 @@ struct ProfileView: View {
     @State private var showDeleteAlert = false
     @State private var postToDelete: Post?
     
-    // Computed properties for real user data
     private var userName: String {
         authManager.userProfile?.nickname ?? "User"
     }
@@ -35,15 +34,13 @@ struct ProfileView: View {
 
     var body: some View {
         ZStack {
-            Color.Brand.primary.opacity(0.06)
-                .ignoresSafeArea()
+            Color.Brand.primary.opacity(0.06).ignoresSafeArea()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-
-                    // MARK: Avatar + name
+                    
+                    // MARK: - Avatar + Name Section
                     VStack(spacing: 12) {
-                        // Avatar with initials
                         ZStack {
                             Circle()
                                 .fill(Color.Brand.primary.opacity(0.2))
@@ -54,51 +51,22 @@ struct ProfileView: View {
                                 .foregroundColor(Color.Brand.primary)
                         }
 
-                        Text(userName)
-                            .font(.title3.weight(.bold))
-                            .foregroundColor(.primary)
-                        
-                        Text(fullName)
-                            .font(.subheadline)
-                            .foregroundColor(.gray)
-
-                        Text("Student ID: \(studentID)")
-                            .font(.footnote)
-                            .foregroundColor(.gray)
-                        
-                        Text(faculty)
-                            .font(.caption)
-                            .foregroundColor(.gray)
+                        Text(userName).font(.title3.weight(.bold))
+                        Text(fullName).font(.subheadline).foregroundColor(.gray)
+                        Text("Student ID: \(studentID)").font(.footnote).foregroundColor(.gray)
+                        Text(faculty).font(.caption).foregroundColor(.gray)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.top, 8)
 
-                    // MARK: Stats cards
+                    // MARK: - Stats Cards
                     HStack(spacing: 16) {
-                        ProfileStatCard(
-                            title: "Total Points",
-                            value: "\(totalPoints)"
-                        )
-
-                        ProfileStatCard(
-                            title: "Rank",
-                            value: userRank > 0 ? "#\(userRank)" : "..."
-                        )
+                        ProfileStatCard(title: "Total Points", value: "\(totalPoints)")
+                        ProfileStatCard(title: "Rank", value: userRank > 0 ? "#\(userRank)" : "...")
                     }
                     .padding(.horizontal, 16)
-                    .onAppear {
-                        // Fetch rank when view appears
-                        authManager.fetchUserRank { rank in
-                            userRank = rank
-                        }
-                        
-                        // Fetch user posts
-                        if let userId = authManager.user?.uid {
-                            postManager.fetchUserPosts(userId: userId)
-                        }
-                    }
 
-                    // MARK: Today Post
+                    // MARK: - Today's Posts Section
                     VStack(alignment: .leading, spacing: 12) {
                         SectionTitle("Today Post")
 
@@ -108,7 +76,8 @@ struct ProfileView: View {
                                 .foregroundColor(.gray)
                                 .padding()
                         } else {
-                            ForEach(postManager.userPosts.prefix(3)) { post in
+                            // We use the ID as the identifier to ensure SwiftUI tracks deletions correctly
+                            ForEach(postManager.userPosts) { post in
                                 TodayPostCard(
                                     post: post,
                                     onDelete: {
@@ -121,7 +90,7 @@ struct ProfileView: View {
                     }
                     .padding(.horizontal, 16)
 
-                    // MARK: Captured Characters
+                    // MARK: - Captured Characters Section
                     VStack(alignment: .leading, spacing: 12) {
                         SectionTitle("Captured Characters")
 
@@ -129,11 +98,16 @@ struct ProfileView: View {
                             .font(.footnote)
                             .foregroundColor(.gray)
 
-                        CapturedCharacterCard()
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 12) {
+                                CapturedCharacterCard(name: "Foxy", price: "75 coins")
+                                // Add more cards here if available in your data model
+                            }
+                        }
                     }
                     .padding(.horizontal, 16)
 
-                    // MARK: Settings
+                    // MARK: - Settings Section
                     VStack(alignment: .leading, spacing: 12) {
                         SectionTitle("Settings")
 
@@ -161,7 +135,7 @@ struct ProfileView: View {
                     }
                     .padding(.horizontal, 16)
 
-                    // MARK: Logout button
+                    // MARK: - Logout Button
                     Button {
                         showLogoutAlert = true
                     } label: {
@@ -178,52 +152,48 @@ struct ProfileView: View {
                 }
             }
         }
+        .onAppear {
+            authManager.fetchUserRank { rank in self.userRank = rank }
+            if let userId = authManager.user?.uid {
+                postManager.fetchUserPosts(userId: userId)
+            }
+        }
         .alert("Logout", isPresented: $showLogoutAlert) {
             Button("Cancel", role: .cancel) { }
-            Button("Logout", role: .destructive) {
-                authManager.signOut()
-            }
-        } message: {
-            Text("Are you sure you want to logout?")
+            Button("Logout", role: .destructive) { authManager.signOut() }
         }
         .alert("Delete Post", isPresented: $showDeleteAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
                 if let post = postToDelete {
                     Task {
-                        await deletePost(post)
+                        await performDelete(post)
                     }
                 }
             }
         } message: {
             Text("Are you sure you want to delete this post?")
         }
-        .onDisappear {
-            postManager.stopListening()
-        }
     }
     
-    // MARK: - Delete Post
-    private func deletePost(_ post: Post) async {
+    // Explicit delete function to ensure synchronization
+    private func performDelete(_ post: Post) async {
         guard let postId = post.id else { return }
-        
         do {
             try await postManager.deletePost(postId)
-            print("✅ Post deleted")
+            // The Firebase listener in PostManager should automatically update 'userPosts'
+            // resulting in a UI refresh.
         } catch {
-            print("❌ Error deleting post: \(error)")
+            print("❌ Delete error: \(error.localizedDescription)")
         }
     }
 }
 
-// MARK: - Reusable bits
+// MARK: - Reusable UI Components
 
-private struct SectionTitle: View {
+struct SectionTitle: View {
     let title: String
-
-    init(_ title: String) {
-        self.title = title
-    }
+    init(_ title: String) { self.title = title }
 
     var body: some View {
         Text(title)
@@ -232,7 +202,7 @@ private struct SectionTitle: View {
     }
 }
 
-private struct ProfileStatCard: View {
+struct ProfileStatCard: View {
     let title: String
     let value: String
 
@@ -248,33 +218,23 @@ private struct ProfileStatCard: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
-        .background(Color.Brand.coin)
+        .background(Color.Brand.primary)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
-private struct TodayPostCard: View {
+struct TodayPostCard: View {
     let post: Post
     let onDelete: () -> Void
     
     private var timeAgo: String {
-        let interval = Date().timeIntervalSince(post.date)
-        let hours = Int(interval / 3600)
-        let days = Int(interval / 86400)
-        
-        if days > 0 {
-            return "Posted \(days) day\(days == 1 ? "" : "s") ago"
-        } else if hours > 0 {
-            return "Posted \(hours) hour\(hours == 1 ? "" : "s") ago"
-        } else {
-            let minutes = max(1, Int(interval / 60))
-            return "Posted \(minutes) minute\(minutes == 1 ? "" : "s") ago"
-        }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter.localizedString(for: post.date, relativeTo: Date())
     }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-
             HStack(spacing: 8) {
                 Circle()
                     .fill(Color.Brand.primary.opacity(0.15))
@@ -314,7 +274,6 @@ private struct TodayPostCard: View {
                     Image(systemName: "arrow.up")
                     Text("\(post.likeCount)")
                 }
-
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.down")
                     Text("\(post.dislikeCount)")
@@ -333,58 +292,48 @@ private struct TodayPostCard: View {
     
     private var iconForCategory: String {
         switch post.category {
-        case .casual:
-            return "bolt.heart"
-        case .event:
-            return "calendar"
-        case .question:
-            return "questionmark.circle"
-        case .announcement:
-            return "megaphone"
-        case .arChallenge:
-            return "arkit"
+        case .casual: return "bolt.heart"
+        case .lostFound: return "magnifyingglass"
+        case .complaint: return "exclamationmark.triangle"
+        case .event: return "calendar"
+        case .question: return "questionmark.circle"
+        case .announcement: return "megaphone"
+        case .arChallenge: return "arkit"
         }
     }
 }
 
-import SwiftUI
-
-private struct CapturedCharacterCard: View {
+struct CapturedCharacterCard: View {
+    let name: String
+    let price: String
+    
     var body: some View {
         VStack(spacing: 0) {
-
-            // TOP
             ZStack {
                 Color(UIColor.systemGray6)
-
-                Image("Foxy")
+                Image(name) // Ensure "Foxy" exists in Assets.xcassets
                     .resizable()
                     .scaledToFit()
                     .frame(width: 80, height: 80)
             }
             .frame(height: 130)
-            .clipShape(
-                RoundedCorner(radius: 14, corners: [.topLeft, .topRight])
-            )
+            .clipShape(RoundedCorner(radius: 14, corners: [.topLeft, .topRight]))
 
-            // BOTTOM
             ZStack {
-                Color(.white)
-
-                Text("Fox · 75 coins")
+                Color.white
+                Text("\(name) · \(price)")
                     .font(.subheadline)
                     .foregroundColor(.primary)
             }
             .frame(height: 40)
-            .clipShape(
-                RoundedCorner(radius: 14, corners: [.bottomLeft, .bottomRight])
-            )
+            .clipShape(RoundedCorner(radius: 14, corners: [.bottomLeft, .bottomRight]))
         }
         .frame(width: 150)
         .shadow(color: .black.opacity(0.06), radius: 4, y: 3)
     }
 }
 
+// Helper for corner clipping
 struct RoundedCorner: Shape {
     var radius: CGFloat
     var corners: UIRectCorner

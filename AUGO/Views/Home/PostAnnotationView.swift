@@ -4,22 +4,30 @@ import SwiftUI
 // MARK: - POST PIN (Unified size & flat color)
 // --------------------------------------------
 struct PostPinView: View {
-    let post: CampusPost
+    let post: Post
 
     var body: some View {
         Image(systemName: "mappin.circle.fill")
-            .font(.system(size: 18))   // unified size
-            .foregroundColor(colorFor(post.category))  // pure color
+            .font(.system(size: 18))
+            .foregroundColor(colorFor(post.category))
     }
 
-    private func colorFor(_ category: PostCategory) -> Color {
+    private func colorFor(_ category: Post.Category) -> Color {
         switch category {
         case .casual:
-            return .teal                       // casual = teal
+            return .teal
         case .lostFound:
-            return .red                        // lost & found = red
+            return .red
         case .complaint:
-            return Color(red: 1.0, green: 0.84, blue: 0.0) // dandelion
+            return Color(red: 1.0, green: 0.84, blue: 0.0)
+        case .event:
+            return .purple
+        case .question:
+            return .blue
+        case .announcement:
+            return .orange
+        case .arChallenge:
+            return .green
         }
     }
 }
@@ -28,23 +36,23 @@ struct PostPinView: View {
 // MARK: - POST BUBBLE (Expanded on tap)
 // --------------------------------------------
 struct PostBubbleView: View {
-    let post: CampusPost
+    let post: Post
 
     var body: some View {
         VStack(spacing: 4) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(post.message)
+                Text(post.content)
                     .font(.caption)
                     .foregroundColor(.black)
 
                 HStack {
-                    Text(post.author)
+                    Text(post.userId)
                         .font(.caption2.bold())
                         .foregroundColor(.gray)
 
                     Spacer()
 
-                    Text(relativeTime(from: post.createdAt))
+                    Text(relativeTime(from: post.date))
                         .font(.caption2)
                         .foregroundColor(.gray)
                 }
@@ -66,7 +74,7 @@ struct PostBubbleView: View {
         }
     }
 
-    private func colorFor(_ category: PostCategory) -> Color {
+    private func colorFor(_ category: Post.Category) -> Color {
         switch category {
         case .casual:
             return .teal
@@ -74,6 +82,14 @@ struct PostBubbleView: View {
             return .red
         case .complaint:
             return Color(red: 1.0, green: 0.84, blue: 0.0)
+        case .event:
+            return .purple
+        case .question:
+            return .blue
+        case .announcement:
+            return .orange
+        case .arChallenge:
+            return .green
         }
     }
 
@@ -81,10 +97,13 @@ struct PostBubbleView: View {
         let mins = Int(-date.timeIntervalSinceNow / 60)
         if mins < 1 { return "Just now" }
         if mins < 60 { return "\(mins)m ago" }
-        return "\(mins/60)h ago"
+        return "\(mins / 60)h ago"
     }
 }
 
+// --------------------------------------------
+// MARK: - TRIANGLE
+// --------------------------------------------
 struct Triangle: Shape {
     func path(in r: CGRect) -> Path {
         var p = Path()
@@ -99,7 +118,7 @@ struct Triangle: Shape {
 // MARK: - POST ANNOTATION WRAPPER
 // --------------------------------------------
 struct PostAnnotationView: View {
-    let post: CampusPost
+    let post: Post
     let isSelected: Bool
     let onTap: () -> Void
 
@@ -116,7 +135,7 @@ struct PostAnnotationView: View {
 }
 
 // --------------------------------------------
-// MARK: - ANNOUNCEMENT PIN (unchanged style)
+// MARK: - ANNOUNCEMENT PIN (unchanged)
 // --------------------------------------------
 struct AnnouncementPinView: View {
     let announcement: Announcement

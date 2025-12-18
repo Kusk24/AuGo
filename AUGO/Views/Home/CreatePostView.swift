@@ -1,32 +1,28 @@
 import SwiftUI
-import FirebaseAuth
+import MapKit
 
 struct CreatePostView: View {
     @Binding var isPresentedFromHome: Bool
+    
+    @EnvironmentObject var postManager: PostManager
     @EnvironmentObject var authManager: AuthenticationManager
-    @StateObject private var postManager = PostManager()
+    @EnvironmentObject var viewModel: CampusMapViewModel
 
     @State private var message: String = ""
-    @State private var selectedCategory: Post.PostCategory? = nil
-
-    @State private var goToMap = false
-    @State private var pendingMessage: String = ""
-    @State private var pendingCategory: Post.PostCategory = .casual
-    @State private var showAlert = false
-    @State private var alertMessage = ""
+    @State private var selectedCategory: Post.Category? = nil
 
     private var canPost: Bool {
         !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         && selectedCategory != nil
     }
-    
+
     private var userAvatar: String {
         if let nickname = authManager.userProfile?.nickname {
             return String(nickname.prefix(1)).uppercased()
         }
         return "U"
     }
-    
+
     private var userName: String {
         authManager.userProfile?.nickname ?? "User"
     }
@@ -37,15 +33,13 @@ struct CreatePostView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 12) {
-
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        // User avatar with initials
                         ZStack {
                             Circle()
                                 .fill(Color.Brand.primary.opacity(0.2))
                                 .frame(width: 36, height: 36)
-                            
+
                             Text(userAvatar)
                                 .font(.system(size: 16, weight: .bold))
                                 .foregroundColor(Color.Brand.primary)
@@ -57,7 +51,7 @@ struct CreatePostView: View {
                         Spacer()
 
                         Menu {
-                            ForEach(Post.PostCategory.allCases) { category in
+                            ForEach(Post.Category.allCases) { category in
                                 Button(category.rawValue) {
                                     selectedCategory = category
                                 }
@@ -103,70 +97,27 @@ struct CreatePostView: View {
                 )
                 .padding(.horizontal)
 
-                Button {
-                    Task {
-                        await createPost()
-                    }
+                NavigationLink {
+                    CreatePostMapView(
+                        isPresentedFromHome: $isPresentedFromHome,
+                        content: message,
+                        category: selectedCategory ?? .casual
+                    )
                 } label: {
-                    HStack {
-                        if postManager.isLoading {
-                            ProgressView()
-                                .tint(.white)
-                        }
-                        Text(postManager.isLoading ? "Posting..." : "Post")
-                            .font(.headline)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(canPost && !postManager.isLoading ? Color.Brand.primary : Color.gray.opacity(0.3))
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
+                    Text("Choose Location on Map")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(canPost ? Color.Brand.primary : Color.gray.opacity(0.3))
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
                 }
-                .disabled(!canPost || postManager.isLoading)
+                .disabled(!canPost)
                 .padding(.horizontal)
                 .padding(.bottom, 8)
             }
         }
         .navigationTitle("Create Post")
         .navigationBarTitleDisplayMode(.inline)
-        .alert("Post", isPresented: $showAlert) {
-            Button("OK") {
-                if alertMessage.contains("successfully") {
-                    isPresentedFromHome = false
-                }
-            }
-        } message: {
-            Text(alertMessage)
-        }
-    }
-    
-    // MARK: - Create Post Function
-    private func createPost() async {
-        guard let category = selectedCategory,
-              let userId = authManager.user?.uid else {
-            alertMessage = "Error: Missing user information"
-            showAlert = true
-            return
-        }
-        
-        do {
-            let postId = try await postManager.createPost(
-                content: message,
-                category: category,
-                userId: userId
-            )
-            
-            print("✅ Post created with ID: \(postId)")
-            alertMessage = "Post created successfully!"
-            showAlert = true
-            
-            // Clear form
-            message = ""
-            selectedCategory = nil
-            
-        } catch {
-            alertMessage = "Failed to create post: \(error.localizedDescription)"
-            showAlert = true
-        }
     }
 }

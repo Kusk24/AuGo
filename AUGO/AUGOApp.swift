@@ -7,28 +7,25 @@ struct AUGOApp: App {
 
     @StateObject private var router = AppRouter()
     @StateObject private var authManager = AuthenticationManager()
+    
+    // --- ADD THESE NEW MANAGERS ---
+    @StateObject private var postManager = PostManager()
+    @StateObject private var mapViewModel = CampusMapViewModel()
+    @StateObject private var announcementCenter = AnnouncementCenter()
 
     init() {
-        // Configure Firebase
         FirebaseApp.configure()
         
-        // --- NAV BAR (Brand purple titles, like HealthyMe) ---
+        // Navigation Bar Appearance
         let navAppearance = UINavigationBarAppearance()
         navAppearance.configureWithTransparentBackground()
-        navAppearance.largeTitleTextAttributes = [
-            .foregroundColor: UIColor(Color.Brand.primary)
-        ]
-        navAppearance.titleTextAttributes = [
-            .foregroundColor: UIColor(Color.Brand.primary)
-        ]
+        navAppearance.largeTitleTextAttributes = [.foregroundColor: UIColor(Color.Brand.primary)]
+        navAppearance.titleTextAttributes = [.foregroundColor: UIColor(Color.Brand.primary)]
 
         UINavigationBar.appearance().standardAppearance   = navAppearance
         UINavigationBar.appearance().scrollEdgeAppearance = navAppearance
         UINavigationBar.appearance().compactAppearance    = navAppearance
         UINavigationBar.appearance().tintColor            = UIColor(Color.Brand.primary)
-
-        // ⛔️ NO TAB BAR BACKGROUND COLOR HERE (Option A = white system tab bar)
-        // Tab icons/text color will come from .tint(Color.Brand.primary) in RootTabView
     }
 
     var body: some Scene {
@@ -36,8 +33,11 @@ struct AUGOApp: App {
             router.rootView()
                 .environmentObject(router)
                 .environmentObject(authManager)
+                // --- INJECT THE NEW OBJECTS HERE ---
+                .environmentObject(postManager)
+                .environmentObject(mapViewModel)
+                .environmentObject(announcementCenter)
                 .onAppear {
-                    // Connect router to auth state changes
                     router.observeAuthState(authManager: authManager)
                 }
         }
