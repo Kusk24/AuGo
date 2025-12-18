@@ -1,107 +1,205 @@
 import SwiftUI
+import FirebaseFirestore
 
 // MARK: - Model
 
 struct Leader: Identifiable {
-    let id = UUID()
+    let id: String
     let name: String
+    let nickname: String
     let totalPoints: Int
     let rank: Int
+    
+    init(user: User, rank: Int) {
+        self.id = user.id ?? UUID().uuidString
+        self.name = user.name
+        self.nickname = user.nickname
+        self.totalPoints = user.score
+        self.rank = rank
+    }
 }
 
 // MARK: - Main View
 
 struct LeaderboardView: View {
+    
+    @EnvironmentObject var authManager: AuthenticationManager
+    @State private var leaders: [Leader] = []
+    @State private var isLoading = true
 
-    private let leaders: [Leader] = [
-        .init(name: "Tim",     totalPoints: 2000, rank: 1),
-        .init(name: "Damian",  totalPoints: 1800, rank: 2),
-        .init(name: "Richard", totalPoints: 1700, rank: 3),
-        .init(name: "User",    totalPoints: 1500, rank: 4),
-        .init(name: "User",    totalPoints: 1400, rank: 5),
-        .init(name: "User",    totalPoints: 1300, rank: 6),
-        .init(name: "Jason",   totalPoints: 1200, rank: 7),
-        .init(name: "User",    totalPoints: 1100, rank: 8),
-        .init(name: "User",    totalPoints: 1000, rank: 9),
-        .init(name: "User",    totalPoints: 900,  rank: 10)
-    ]
-
-    private var topThree: [Leader]  { Array(leaders.prefix(3)) }
-    private var others:   [Leader]  { Array(leaders.dropFirst(3)) }
+    private var topThree: [Leader] { Array(leaders.prefix(3)) }
+    private var others: [Leader] { Array(leaders.dropFirst(3)) }
 
     var body: some View {
         ZStack {
             Color.Brand.primary.opacity(0.06)
                 .ignoresSafeArea()
 
-            List {
-                // --- TOP SCORERS TITLE ---
-                Text("Top Scorers")
-                    .font(.headline)
-                    .foregroundColor(Color.Brand.primary)
-                    .padding(.top, 4)
-                    .padding(.bottom, 2)
-                    .listRowInsets(.init(top: 4, leading: 16, bottom: 4, trailing: 16))
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden, edges: [.top, .bottom])
-
-                // --- TOP 3 CARDS ---
-                HStack(spacing: 16) {
-                    Spacer(minLength: 0)
-
-                    if topThree.count >= 2 {
-                        TopLeaderCardView(leader: topThree[1], highlight: false)
-                    }
-                    if topThree.count >= 1 {
-                        TopLeaderCardView(leader: topThree[0], highlight: true)
-                    }
-                    if topThree.count >= 3 {
-                        TopLeaderCardView(leader: topThree[2], highlight: false)
-                    }
-
-                    Spacer(minLength: 0)
+            if isLoading {
+                VStack(spacing: 20) {
+                    ProgressView()
+                        .scaleEffect(1.5)
+                        .tint(Color.Brand.primary)
+                    
+                    Text("Loading leaderboard...")
+                        .font(.headline)
+                        .foregroundColor(.gray)
                 }
-                .listRowInsets(.init(top: 0, leading: 16, bottom: 12, trailing: 16))
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden, edges: [.top, .bottom])
-
-                // --- RANKINGS TITLE ---
-                Text("Rankings")
-                    .font(.headline)
-                    .foregroundColor(Color.Brand.primary)
-                    .padding(.top, 4)
-                    .padding(.bottom, 2)
-                    .listRowInsets(.init(top: 4, leading: 16, bottom: 4, trailing: 16))
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden, edges: [.top, .bottom])
-
-                // --- RANKINGS ROWS (gray cards) ---
-                ForEach(others) { leader in
-                    LeaderRowView(leader: leader)
-                        .listRowInsets(.init(top: 0, leading: 16, bottom: 0, trailing: 16))
+            } else if leaders.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "chart.bar.fill")
+                        .font(.system(size: 60))
+                        .foregroundColor(Color.Brand.primary.opacity(0.3))
+                    
+                    Text("No users yet")
+                        .font(.headline)
+                        .foregroundColor(.gray)
+                    
+                    Text("Be the first to score points!")
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                }
+            } else {
+                List {
+                    Text("Top Scorers")
+                        .font(.headline)
+                        .foregroundColor(Color.Brand.primary)
+                        .padding(.top, 4)
+                        .padding(.bottom, 2)
+                        .listRowInsets(.init(top: 4, leading: 16, bottom: 4, trailing: 16))
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden, edges: [.top, .bottom])
+
+                    HStack(spacing: 16) {
+                        Spacer(minLength: 0)
+
+                        if topThree.count >= 2 {
+                            TopLeaderCardView(leader: topThree[1], highlight: false)
+                        }
+                        if topThree.count >= 1 {
+                            TopLeaderCardView(leader: topThree[0], highlight: true)
+                        }
+                        if topThree.count >= 3 {
+                            TopLeaderCardView(leader: topThree[2], highlight: false)
+                        }
+
+                        Spacer(minLength: 0)
+                    }
+                    .listRowInsets(.init(top: 0, leading: 16, bottom: 12, trailing: 16))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden, edges: [.top, .bottom])
+
+                    if !others.isEmpty {
+                        Text("Rankings")
+                            .font(.headline)
+                            .foregroundColor(Color.Brand.primary)
+                            .padding(.top, 4)
+                            .padding(.bottom, 2)
+                            .listRowInsets(.init(top: 4, leading: 16, bottom: 4, trailing: 16))
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden, edges: [.top, .bottom])
+
+                        ForEach(others) { leader in
+                            LeaderRowView(leader: leader)
+                                .listRowInsets(.init(top: 0, leading: 16, bottom: 0, trailing: 16))
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden, edges: [.top, .bottom])
+                        }
+                    }
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
+        }
+        .onAppear {
+            fetchLeaderboard()
+        }
+        .refreshable {
+            fetchLeaderboard()
         }
     }
+    
+    func fetchLeaderboard() {
+        isLoading = true
+        let db = Firestore.firestore()
+        
+        db.collection("users")
+            .order(by: "score", descending: true)
+            .limit(to: 50)
+            .getDocuments { snapshot, error in
+                Task { @MainActor in
+                    if let error = error {
+                        print("❌ Error fetching leaderboard: \(error)")
+                        self.isLoading = false
+                        return
+                    }
+                    
+                    guard let documents = snapshot?.documents else {
+                        print("⚠️ No documents in snapshot")
+                        self.isLoading = false
+                        return
+                    }
+                    
+                    print("✅ Fetched \(documents.count) documents from Firestore")
+                    
+                    let fetchedLeaders = documents.enumerated().compactMap { index, document -> Leader? in
+                        let data = document.data()
+                        
+                        // Filter out non-active users
+                        let status = data["status"] as? String ?? "active"
+                        guard status == "active" else {
+                            print("⚠️ Skipping non-active user: \(document.documentID)")
+                            return nil
+                        }
+                        
+                        guard let studentID = data["studentID"] as? String,
+                              let name = data["name"] as? String,
+                              let nickname = data["nickname"] as? String,
+                              let email = data["email"] as? String,
+                              let faculty = data["faculty"] as? String else {
+                            print("⚠️ Missing fields for document: \(document.documentID)")
+                            return nil
+                        }
+                        
+                        let user = User(
+                            id: document.documentID,
+                            studentID: studentID,
+                            name: name,
+                            nickname: nickname,
+                            email: email,
+                            faculty: faculty,
+                            birthDate: (data["birthDate"] as? Timestamp)?.dateValue() ?? Date(),
+                            warningCount: data["warningCount"] as? Int ?? 0,
+                            status: User.UserStatus(rawValue: status) ?? .active,
+                            joinedDate: (data["joinedDate"] as? Timestamp)?.dateValue() ?? Date(),
+                            score: data["score"] as? Int ?? 0
+                        )
+                        
+                        print("✅ Parsed user: \(nickname) with score: \(user.score)")
+                        return Leader(user: user, rank: index + 1)
+                    }
+                    
+                    print("✅ Total leaders created: \(fetchedLeaders.count)")
+                    self.leaders = fetchedLeaders
+                    self.isLoading = false
+                }
+            }
+    }
 }
 
-// MARK: - Helper for avatars
+// MARK: - Helper
 
 private extension Leader {
-    var hasCustomAvatar: Bool {
-        ["Tim", "Damian", "Richard", "Jason"].contains(name)
+    var displayName: String {
+        nickname.isEmpty ? name : nickname
     }
-
-    var avatarImage: Image {
-        hasCustomAvatar ? Image(name) : Image(systemName: "person.circle.fill")
+    
+    var avatarInitial: String {
+        String(displayName.prefix(1)).uppercased()
     }
 }
 
-// MARK: - Top 3 cards
+// MARK: - Top 3 Cards
 
 private struct TopLeaderCardView: View {
     let leader: Leader
@@ -118,23 +216,25 @@ private struct TopLeaderCardView: View {
                 )
 
             VStack(spacing: 8) {
-
-                // CLEAN CIRCLE AVATAR (no purple background)
-                leader.avatarImage
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: highlight ? 70 : 60,
-                           height: highlight ? 70 : 60)
-                    .clipShape(Circle())
-                    .padding(.top, 12)
+                ZStack {
+                    Circle()
+                        .fill(Color.Brand.primary.opacity(0.2))
+                        .frame(width: highlight ? 70 : 60, height: highlight ? 70 : 60)
+                    
+                    Text(leader.avatarInitial)
+                        .font(.system(size: highlight ? 30 : 24, weight: .bold))
+                        .foregroundColor(Color.Brand.primary)
+                }
+                .padding(.top, 12)
 
                 Text("#\(leader.rank)")
                     .font(.subheadline.bold())
                     .foregroundColor(.gray)
 
-                Text(leader.name)
+                Text(leader.displayName)
                     .font(.subheadline)
                     .foregroundColor(.primary)
+                    .lineLimit(1)
 
                 Text("Total Points: \(leader.totalPoints)")
                     .font(.caption2)
@@ -146,29 +246,25 @@ private struct TopLeaderCardView: View {
     }
 }
 
-// MARK: - List rows (gray card style)
+// MARK: - List Rows
 
 private struct LeaderRowView: View {
     let leader: Leader
 
     var body: some View {
         HStack(spacing: 12) {
-
             ZStack {
                 Circle()
-                    .fill(Color.Brand.primary.opacity(0.06))   // subtle background
+                    .fill(Color.Brand.primary.opacity(0.2))
                     .frame(width: 46, height: 46)
 
-                leader.avatarImage
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 42, height: 42)
-                    .clipShape(Circle())
+                Text(leader.avatarInitial)
+                    .font(.system(size: 18, weight: .bold))
                     .foregroundColor(Color.Brand.primary)
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(leader.name)
+                Text(leader.displayName)
                     .font(.subheadline)
                     .foregroundColor(.primary)
 

@@ -13,6 +13,7 @@ struct User: Codable, Identifiable {
     var warningCount: Int
     var status: UserStatus
     let joinedDate: Date
+    var score: Int // NEW: user's total score/points
     
     enum UserStatus: String, Codable {
         case active
@@ -20,7 +21,7 @@ struct User: Codable, Identifiable {
         case banned
     }
     
-    init(id: String? = nil, studentID: String, name: String, nickname: String, email: String, faculty: String, birthDate: Date, warningCount: Int = 0, status: UserStatus = .active, joinedDate: Date = Date()) {
+    init(id: String? = nil, studentID: String, name: String, nickname: String, email: String, faculty: String, birthDate: Date, warningCount: Int = 0, status: UserStatus = .active, joinedDate: Date = Date(), score: Int = 0) {
         self.id = id
         self.studentID = studentID
         self.name = name
@@ -31,5 +32,6 @@ struct User: Codable, Identifiable {
         self.warningCount = warningCount
         self.status = status
         self.joinedDate = joinedDate
+        self.score = score
     }
 }

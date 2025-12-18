@@ -4,14 +4,30 @@ struct ProfileView: View {
     
     @EnvironmentObject var authManager: AuthenticationManager
 
-    // dummy data for now
-    private let name       = "Richard"
-    private let studentID  = "7041951"
-    private let totalPoints = 1700
-    private let rank        = 3
-
     @State private var notificationsOn = true
     @State private var showLogoutAlert = false
+    @State private var userRank: Int = 0
+    
+    // Computed properties for real user data
+    private var userName: String {
+        authManager.userProfile?.nickname ?? "User"
+    }
+    
+    private var fullName: String {
+        authManager.userProfile?.name ?? "N/A"
+    }
+    
+    private var studentID: String {
+        authManager.userProfile?.studentID ?? "N/A"
+    }
+    
+    private var faculty: String {
+        authManager.userProfile?.faculty ?? "N/A"
+    }
+    
+    private var totalPoints: Int {
+        authManager.userProfile?.score ?? 0
+    }
 
     var body: some View {
         ZStack {
@@ -23,18 +39,31 @@ struct ProfileView: View {
 
                     // MARK: Avatar + name
                     VStack(spacing: 12) {
-                        Image("Richard")            // reuse the same asset as CreatePost
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 96, height: 96)
-                            .clipShape(Circle())
+                        // Avatar with initials
+                        ZStack {
+                            Circle()
+                                .fill(Color.Brand.primary.opacity(0.2))
+                                .frame(width: 96, height: 96)
+                            
+                            Text(String(userName.prefix(1)).uppercased())
+                                .font(.system(size: 40, weight: .bold))
+                                .foregroundColor(Color.Brand.primary)
+                        }
 
-                        Text(name)
+                        Text(userName)
                             .font(.title3.weight(.bold))
                             .foregroundColor(.primary)
+                        
+                        Text(fullName)
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
 
                         Text("Student ID: \(studentID)")
                             .font(.footnote)
+                            .foregroundColor(.gray)
+                        
+                        Text(faculty)
+                            .font(.caption)
                             .foregroundColor(.gray)
                     }
                     .frame(maxWidth: .infinity)
@@ -49,10 +78,16 @@ struct ProfileView: View {
 
                         ProfileStatCard(
                             title: "Rank",
-                            value: "#\(rank)"
+                            value: userRank > 0 ? "#\(userRank)" : "..."
                         )
                     }
                     .padding(.horizontal, 16)
+                    .onAppear {
+                        // Fetch rank when view appears
+                        authManager.fetchUserRank { rank in
+                            userRank = rank
+                        }
+                    }
 
                     // MARK: Today Post
                     VStack(alignment: .leading, spacing: 12) {
