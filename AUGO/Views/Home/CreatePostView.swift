@@ -15,9 +15,19 @@ struct CreatePostView: View {
     @State private var showAlert = false
     @State private var alertMessage = ""
 
+    // Real-time content filtering
+    private var contentFilterResult: (contains: Bool, detectedWords: [String]) {
+        ContentFilter.containsInappropriateContent(message)
+    }
+    
+    private var hasInappropriateContent: Bool {
+        contentFilterResult.contains
+    }
+
     private var canPost: Bool {
         !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         && selectedCategory != nil
+        && !hasInappropriateContent
     }
     
     private var userAvatar: String {
@@ -81,6 +91,7 @@ struct CreatePostView: View {
                     ZStack(alignment: .topLeading) {
                         RoundedRectangle(cornerRadius: 12)
                             .fill(Color(UIColor.systemGray6))
+                            .stroke(hasInappropriateContent ? Color.red : Color.clear, lineWidth: 2)
 
                         TextEditor(text: $message)
                             .padding(8)
@@ -93,6 +104,22 @@ struct CreatePostView: View {
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 12)
                         }
+                    }
+                    
+                    // Real-time warning for inappropriate content
+                    if hasInappropriateContent {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.red)
+                                .font(.caption)
+                            
+                            Text("Your message contains inappropriate language. Please remove offensive words.")
+                                .font(.caption)
+                                .foregroundColor(.red)
+                            
+                            Spacer()
+                        }
+                        .padding(.horizontal, 4)
                     }
                 }
                 .padding()
@@ -145,6 +172,14 @@ struct CreatePostView: View {
         guard let category = selectedCategory,
               let userId = authManager.user?.uid else {
             alertMessage = "Error: Missing user information"
+            showAlert = true
+            return
+        }
+        
+        // Check for inappropriate content before posting
+        let filterResult = ContentFilter.containsInappropriateContent(message)
+        if filterResult.contains {
+            alertMessage = ContentFilter.getValidationMessage(for: filterResult.detectedWords)
             showAlert = true
             return
         }
