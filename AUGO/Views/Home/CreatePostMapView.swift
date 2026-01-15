@@ -1,5 +1,6 @@
 import SwiftUI
-import MapKit
+internal import MapKit
+import FirebaseAuth
 
 struct CreatePostMapView: View {
     @Environment(\.dismiss) private var dismiss
