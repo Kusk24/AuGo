@@ -1,19 +1,20 @@
 import SwiftUI
 import FirebaseAuth
+import CoreLocation
+internal import MapKit
 
 struct CreatePostView: View {
     @Binding var isPresentedFromHome: Bool
     @EnvironmentObject var authManager: AuthenticationManager
+    @EnvironmentObject var mapViewModel: CampusMapViewModel
     @StateObject private var postManager = PostManager()
 
     @State private var message: String = ""
     @State private var selectedCategory: Post.PostCategory? = nil
 
-    @State private var goToMap = false
-    @State private var pendingMessage: String = ""
-    @State private var pendingCategory: Post.PostCategory = .casual
     @State private var showAlert = false
     @State private var alertMessage = ""
+    @State private var navigateToMap = false
 
     // Real-time content filtering
     private var contentFilterResult: (contains: Bool, detectedWords: [String]) {
@@ -131,52 +132,42 @@ struct CreatePostView: View {
                 .padding(.horizontal)
 
                 Button {
-                    Task {
-                        await createPost()
-                    }
+                    proceedToMapSelection()
                 } label: {
                     HStack {
-                        if postManager.isLoading {
-                            ProgressView()
-                                .tint(.white)
-                        }
-                        Text(postManager.isLoading ? "Posting..." : "Post")
+                        Text("Post")
                             .font(.headline)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
-                    .background(canPost && !postManager.isLoading ? Color.Brand.primary : Color.gray.opacity(0.3))
+                    .background(canPost ? Color.Brand.primary : Color.gray.opacity(0.3))
                     .foregroundColor(.white)
                     .cornerRadius(10)
                 }
-                .disabled(!canPost || postManager.isLoading)
+                .disabled(!canPost)
                 .padding(.horizontal)
                 .padding(.bottom, 8)
             }
         }
         .navigationTitle("Create Post")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(isPresented: $navigateToMap) {
+            CreatePostMapView(
+                isPresentedFromHome: $isPresentedFromHome,
+                message: message,
+                category: selectedCategory ?? .casual
+            )
+        }
         .alert("Post", isPresented: $showAlert) {
-            Button("OK") {
-                if alertMessage.contains("successfully") {
-                    isPresentedFromHome = false
-                }
-            }
+            Button("OK") { }
         } message: {
             Text(alertMessage)
         }
     }
     
-    // MARK: - Create Post Function
-    private func createPost() async {
-        guard let category = selectedCategory,
-              let userId = authManager.user?.uid else {
-            alertMessage = "Error: Missing user information"
-            showAlert = true
-            return
-        }
-        
-        // Check for inappropriate content before posting
+    // MARK: - Proceed to Map Selection
+    private func proceedToMapSelection() {
+        // Check for inappropriate content before proceeding
         let filterResult = ContentFilter.containsInappropriateContent(message)
         if filterResult.contains {
             alertMessage = ContentFilter.getValidationMessage(for: filterResult.detectedWords)
@@ -184,24 +175,7 @@ struct CreatePostView: View {
             return
         }
         
-        do {
-            let postId = try await postManager.createPost(
-                content: message,
-                category: category,
-                userId: userId
-            )
-            
-            print("✅ Post created with ID: \(postId)")
-            alertMessage = "Post created successfully!"
-            showAlert = true
-            
-            // Clear form
-            message = ""
-            selectedCategory = nil
-            
-        } catch {
-            alertMessage = "Failed to create post: \(error.localizedDescription)"
-            showAlert = true
-        }
+        // Navigate to map for location selection
+        navigateToMap = true
     }
 }

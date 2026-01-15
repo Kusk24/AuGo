@@ -29,6 +29,7 @@ struct PostPinView: View {
 // --------------------------------------------
 struct PostBubbleView: View {
     let post: CampusPost
+    var onReport: (() -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 4) {
@@ -47,6 +48,16 @@ struct PostBubbleView: View {
                     Text(relativeTime(from: post.createdAt))
                         .font(.caption2)
                         .foregroundColor(.gray)
+                    
+                    // Report button
+                    if let onReport = onReport {
+                        Button(action: onReport) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.caption2)
+                                .foregroundColor(.red.opacity(0.7))
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
             .padding(8)

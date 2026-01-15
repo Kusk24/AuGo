@@ -6,12 +6,17 @@ struct CreatePostMapView: View {
     @Binding var isPresentedFromHome: Bool
 
     let message: String
-    let category: PostCategory
+    let category: Post.PostCategory
 
     @EnvironmentObject var mapViewModel: CampusMapViewModel
+    @EnvironmentObject var postManager: PostManager
+    @EnvironmentObject var authManager: AuthenticationManager
 
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var currentCenter: CLLocationCoordinate2D?
+    @State private var isSubmitting = false
+    @State private var showAlert = false
+    @State private var alertMessage = ""
 
     var body: some View {
         ZStack {
@@ -47,24 +52,25 @@ struct CreatePostMapView: View {
                     .padding(.horizontal)
 
                 Button {
-                    let coord = currentCenter ?? mapViewModel.campusRegion.center
-                    mapViewModel.addPost(
-                        message: message,
-                        category: category,
-                        author: "You",
-                        at: coord
-                    )
-                    dismiss()
-                    isPresentedFromHome = false
+                    Task {
+                        await submitPost()
+                    }
                 } label: {
-                    Text("Confirm post location")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(Color.Brand.primary)
-                        .foregroundColor(.white)
-                        .cornerRadius(10)
+                    HStack {
+                        if isSubmitting {
+                            ProgressView()
+                                .tint(.white)
+                        }
+                        Text(isSubmitting ? "Posting..." : "Confirm & Post")
+                            .font(.headline)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(isSubmitting ? Color.gray.opacity(0.5) : Color.Brand.primary)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
                 }
+                .disabled(isSubmitting)
                 .padding(.horizontal)
                 .padding(.bottom, 16)
             }
@@ -74,16 +80,61 @@ struct CreatePostMapView: View {
         }
         .navigationTitle("Choose Location")
         .navigationBarTitleDisplayMode(.inline)
+        .alert("Post", isPresented: $showAlert) {
+            Button("OK") {
+                if alertMessage.contains("successfully") {
+                    dismiss()
+                    isPresentedFromHome = false
+                }
+            }
+        } message: {
+            Text(alertMessage)
+        }
+    }
+    
+    // MARK: - Submit Post to Firebase
+    private func submitPost() async {
+        guard let userId = authManager.user?.uid else {
+            alertMessage = "Error: User not authenticated"
+            showAlert = true
+            return
+        }
+        
+        isSubmitting = true
+        let coordinate = currentCenter ?? mapViewModel.campusRegion.center
+        
+        do {
+            let postId = try await postManager.createPost(
+                content: message,
+                category: category,
+                userId: userId,
+                coordinate: coordinate
+            )
+            
+            print("✅ Post created with ID: \(postId) at location: \(coordinate.latitude), \(coordinate.longitude)")
+            alertMessage = "Post created successfully!"
+            showAlert = true
+            isSubmitting = false
+            
+        } catch {
+            alertMessage = "Failed to create post: \(error.localizedDescription)"
+            showAlert = true
+            isSubmitting = false
+        }
     }
 
-    private func colorFor(_ category: PostCategory) -> Color {
+    private func colorFor(_ category: Post.PostCategory) -> Color {
         switch category {
         case .casual:
             return .teal
-        case .lostFound:
-            return .red
-        case .complaint:
-            return Color(red: 1.0, green: 0.84, blue: 0.0)
+        case .event:
+            return .purple
+        case .question:
+            return .blue
+        case .announcement:
+            return .orange
+        case .arChallenge:
+            return .green
         }
     }
 }

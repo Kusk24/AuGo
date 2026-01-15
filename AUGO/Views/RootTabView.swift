@@ -5,6 +5,7 @@ struct RootTabView: View {
     
     @StateObject private var announcementCenter = AnnouncementCenter()
     @StateObject private var campusMapViewModel = CampusMapViewModel()
+    @StateObject private var postManager = PostManager()
 
     var body: some View {
         ZStack {
@@ -57,6 +58,7 @@ struct RootTabView: View {
             .tint(Color.Brand.primary)
             .environmentObject(announcementCenter)
             .environmentObject(campusMapViewModel)
+            .environmentObject(postManager)
             .allowsHitTesting(!showAnnouncement)
 
             if showAnnouncement {

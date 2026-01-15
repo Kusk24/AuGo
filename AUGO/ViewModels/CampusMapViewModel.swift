@@ -1,5 +1,5 @@
 import Foundation
-import MapKit
+internal import MapKit
 import Combine
 import CoreLocation
 
