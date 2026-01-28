@@ -19,10 +19,22 @@
 		0A48E49F2ECCFB06001A4908 /* CreatePostMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A48E49E2ECCFAFE001A4908 /* CreatePostMapView.swift */; };
 		0A48E4A12ECCFF99001A4908 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A48E4A02ECCFF95001A4908 /* HomeView.swift */; };
 		0A48E4A42ECD1B90001A4908 /* AppRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A48E4A32ECD1B8B001A4908 /* AppRouter.swift */; };
-		0A48E4A62ECD1BA4001A4908 /* LockScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A48E4A52ECD1B9D001A4908 /* LockScreen.swift */; };
 		0A48E4A72ECD2000001A4908 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A48E4A82ECD2000001A4908 /* LoginView.swift */; };
 		0A48E4AA2ECD2100001A4908 /* UserInfoFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A48E4AB2ECD2100001A4908 /* UserInfoFormView.swift */; };
 		0A48E4AC2EE00600001A4908 /* AuthenticationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A48E4AD2EE00600001A4908 /* AuthenticationManager.swift */; };
+		0A582FB22F29336C00A44267 /* AnnouncerHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A582FB12F29336200A44267 /* AnnouncerHomeView.swift */; };
+		0A582FB62F293AC800A44267 /* AnnouncerRootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A582FB52F293AB500A44267 /* AnnouncerRootTabView.swift */; };
+		0A582FB82F293D8700A44267 /* AnnouncerCampusMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A582FB72F293D7D00A44267 /* AnnouncerCampusMapView.swift */; };
+		0A582FBB2F299E2400A44267 /* AnnouncementManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A582FBA2F299E1C00A44267 /* AnnouncementManager.swift */; };
+		0A582FBD2F299E7A00A44267 /* CreateAnnouncementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A582FBC2F299E7300A44267 /* CreateAnnouncementView.swift */; };
+		0A582FBF2F299E9500A44267 /* CreateAnnouncementMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A582FBE2F299E8900A44267 /* CreateAnnouncementMapView.swift */; };
+		0A582FC12F29A26C00A44267 /* AnnouncerAnnouncementFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A582FC02F29A25300A44267 /* AnnouncerAnnouncementFilter.swift */; };
+		0A582FC32F29A53100A44267 /* AnnouncerAnnouncementsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A582FC22F29A51500A44267 /* AnnouncerAnnouncementsViewModel.swift */; };
+		0A582FC62F29A57200A44267 /* AnnouncerAnnouncementsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A582FC52F29A56000A44267 /* AnnouncerAnnouncementsView.swift */; };
+		0A582FC82F29A5C200A44267 /* AnnouncementRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A582FC72F29A5B900A44267 /* AnnouncementRow.swift */; };
+		0A582FCA2F29A5E400A44267 /* StatusBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A582FC92F29A5DF00A44267 /* StatusBadge.swift */; };
+		0A582FCF2F29AE9A00A44267 /* AnnouncerProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A582FCE2F29AE9400A44267 /* AnnouncerProfileView.swift */; };
+		0A582FD12F29AEAA00A44267 /* InfoRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A582FD02F29AEA000A44267 /* InfoRow.swift */; };
 		0AB004772EF2E180007DD336 /* PostCluster.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AB004762EF2E17B007DD336 /* PostCluster.swift */; };
 		0AB004792EF2E1C4007DD336 /* PostClusterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AB004782EF2E1BF007DD336 /* PostClusterView.swift */; };
 		0AB0047B2EF2E1DA007DD336 /* ClusterPostListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AB0047A2EF2E1D3007DD336 /* ClusterPostListView.swift */; };
@@ -61,10 +73,22 @@
 		0A48E49E2ECCFAFE001A4908 /* CreatePostMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreatePostMapView.swift; sourceTree = "<group>"; };
 		0A48E4A02ECCFF95001A4908 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		0A48E4A32ECD1B8B001A4908 /* AppRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRouter.swift; sourceTree = "<group>"; };
-		0A48E4A52ECD1B9D001A4908 /* LockScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockScreen.swift; sourceTree = "<group>"; };
 		0A48E4A82ECD2000001A4908 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		0A48E4AB2ECD2100001A4908 /* UserInfoFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserInfoFormView.swift; sourceTree = "<group>"; };
 		0A48E4AD2EE00600001A4908 /* AuthenticationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticationManager.swift; sourceTree = "<group>"; };
+		0A582FB12F29336200A44267 /* AnnouncerHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncerHomeView.swift; sourceTree = "<group>"; };
+		0A582FB52F293AB500A44267 /* AnnouncerRootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncerRootTabView.swift; sourceTree = "<group>"; };
+		0A582FB72F293D7D00A44267 /* AnnouncerCampusMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncerCampusMapView.swift; sourceTree = "<group>"; };
+		0A582FBA2F299E1C00A44267 /* AnnouncementManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncementManager.swift; sourceTree = "<group>"; };
+		0A582FBC2F299E7300A44267 /* CreateAnnouncementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateAnnouncementView.swift; sourceTree = "<group>"; };
+		0A582FBE2F299E8900A44267 /* CreateAnnouncementMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateAnnouncementMapView.swift; sourceTree = "<group>"; };
+		0A582FC02F29A25300A44267 /* AnnouncerAnnouncementFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncerAnnouncementFilter.swift; sourceTree = "<group>"; };
+		0A582FC22F29A51500A44267 /* AnnouncerAnnouncementsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncerAnnouncementsViewModel.swift; sourceTree = "<group>"; };
+		0A582FC52F29A56000A44267 /* AnnouncerAnnouncementsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncerAnnouncementsView.swift; sourceTree = "<group>"; };
+		0A582FC72F29A5B900A44267 /* AnnouncementRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncementRow.swift; sourceTree = "<group>"; };
+		0A582FC92F29A5DF00A44267 /* StatusBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBadge.swift; sourceTree = "<group>"; };
+		0A582FCE2F29AE9400A44267 /* AnnouncerProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncerProfileView.swift; sourceTree = "<group>"; };
+		0A582FD02F29AEA000A44267 /* InfoRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InfoRow.swift; sourceTree = "<group>"; };
 		0AB004762EF2E17B007DD336 /* PostCluster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostCluster.swift; sourceTree = "<group>"; };
 		0AB004782EF2E1BF007DD336 /* PostClusterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostClusterView.swift; sourceTree = "<group>"; };
 		0AB0047A2EF2E1D3007DD336 /* ClusterPostListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClusterPostListView.swift; sourceTree = "<group>"; };
@@ -124,7 +148,6 @@
 				C55715BB2EDFE01E009B2CB9 /* GoogleService-Info.plist */,
 				0A48E46A2ECCE941001A4908 /* AUGOApp.swift */,
 				0A48E4A32ECD1B8B001A4908 /* AppRouter.swift */,
-				0A48E4A52ECD1B9D001A4908 /* LockScreen.swift */,
 				0ADE15652EDF642D00F8D6A6 /* ViewModels */,
 				0A48E4AE2EE00610001A4908 /* Managers */,
 				0A48E4712ECCE957001A4908 /* Views */,
@@ -146,12 +169,9 @@
 		0A48E4712ECCE957001A4908 /* Views */ = {
 			isa = PBXGroup;
 			children = (
-				0A48E4842ECCEBC6001A4908 /* RootTabView.swift */,
+				0A582FB02F29335C00A44267 /* Announcer */,
 				0A48E4A92ECD2010001A4908 /* Auth */,
-				0A48E4752ECCE9D6001A4908 /* Home */,
-				0A48E4762ECCE9DD001A4908 /* ARCamera */,
-				0A48E4772ECCEA38001A4908 /* Leaderboard */,
-				0A48E4782ECCEA43001A4908 /* Profile */,
+				0A582FAF2F29334600A44267 /* User */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -218,10 +238,65 @@
 		0A48E4AE2EE00610001A4908 /* Managers */ = {
 			isa = PBXGroup;
 			children = (
+				0A582FBA2F299E1C00A44267 /* AnnouncementManager.swift */,
+				0A582FC02F29A25300A44267 /* AnnouncerAnnouncementFilter.swift */,
 				608C6CCA8DD9437BBA6FEC21 /* PostManager.swift */,
 				0A48E4AD2EE00600001A4908 /* AuthenticationManager.swift */,
 			);
 			path = Managers;
+			sourceTree = "<group>";
+		};
+		0A582FAF2F29334600A44267 /* User */ = {
+			isa = PBXGroup;
+			children = (
+				0A48E4842ECCEBC6001A4908 /* RootTabView.swift */,
+				0A48E4752ECCE9D6001A4908 /* Home */,
+				0A48E4762ECCE9DD001A4908 /* ARCamera */,
+				0A48E4772ECCEA38001A4908 /* Leaderboard */,
+				0A48E4782ECCEA43001A4908 /* Profile */,
+			);
+			path = User;
+			sourceTree = "<group>";
+		};
+		0A582FB02F29335C00A44267 /* Announcer */ = {
+			isa = PBXGroup;
+			children = (
+				0A582FB52F293AB500A44267 /* AnnouncerRootTabView.swift */,
+				0A582FB92F293DA000A44267 /* Home */,
+				0A582FC42F29A54600A44267 /* Announcements */,
+				0A582FCD2F29ADD700A44267 /* Profile */,
+			);
+			path = Announcer;
+			sourceTree = "<group>";
+		};
+		0A582FB92F293DA000A44267 /* Home */ = {
+			isa = PBXGroup;
+			children = (
+				0A582FB12F29336200A44267 /* AnnouncerHomeView.swift */,
+				0A582FB72F293D7D00A44267 /* AnnouncerCampusMapView.swift */,
+				0A582FBC2F299E7300A44267 /* CreateAnnouncementView.swift */,
+				0A582FBE2F299E8900A44267 /* CreateAnnouncementMapView.swift */,
+			);
+			path = Home;
+			sourceTree = "<group>";
+		};
+		0A582FC42F29A54600A44267 /* Announcements */ = {
+			isa = PBXGroup;
+			children = (
+				0A582FC52F29A56000A44267 /* AnnouncerAnnouncementsView.swift */,
+				0A582FC92F29A5DF00A44267 /* StatusBadge.swift */,
+				0A582FC72F29A5B900A44267 /* AnnouncementRow.swift */,
+			);
+			path = Announcements;
+			sourceTree = "<group>";
+		};
+		0A582FCD2F29ADD700A44267 /* Profile */ = {
+			isa = PBXGroup;
+			children = (
+				0A582FD02F29AEA000A44267 /* InfoRow.swift */,
+				0A582FCE2F29AE9400A44267 /* AnnouncerProfileView.swift */,
+			);
+			path = Profile;
 			sourceTree = "<group>";
 		};
 		0ADE155B2EDDFBC700F8D6A6 /* Models */ = {
@@ -241,6 +316,7 @@
 		0ADE15652EDF642D00F8D6A6 /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
+				0A582FC22F29A51500A44267 /* AnnouncerAnnouncementsViewModel.swift */,
 				0ADE15662EDF645E00F8D6A6 /* AnnouncementCenter.swift */,
 				0ADE155F2EDF60C800F8D6A6 /* CampusMapViewModel.swift */,
 			);
@@ -329,20 +405,24 @@
 			buildActionMask = 2147483647;
 			files = (
 				E6ADEDF387A847C39FE5149A /* PostManager.swift in Sources */,
+				0A582FBD2F299E7A00A44267 /* CreateAnnouncementView.swift in Sources */,
 				0ADE15622EDF611300F8D6A6 /* PostAnnotationView.swift in Sources */,
+				0A582FC82F29A5C200A44267 /* AnnouncementRow.swift in Sources */,
 				0ADE15602EDF60D900F8D6A6 /* CampusMapViewModel.swift in Sources */,
 				0A48E4802ECCEADE001A4908 /* ARCameraView.swift in Sources */,
 				0A48E49F2ECCFB06001A4908 /* CreatePostMapView.swift in Sources */,
 				0A48E47C2ECCEAA3001A4908 /* LeaderBoardView.swift in Sources */,
+				0A582FD12F29AEAA00A44267 /* InfoRow.swift in Sources */,
 				0AB261FB2EDFF93400FA8431 /* SingleAnnouncementView.swift in Sources */,
 				0A48E4A12ECCFF99001A4908 /* HomeView.swift in Sources */,
 				0ADE155D2EDDFBEC00F8D6A6 /* CampusPost.swift in Sources */,
-				0A48E4A62ECD1BA4001A4908 /* LockScreen.swift in Sources */,
 				0ADE15642EDF63B100F8D6A6 /* Announcement.swift in Sources */,
 				0A48E4A72ECD2000001A4908 /* LoginView.swift in Sources */,
+				0A582FC12F29A26C00A44267 /* AnnouncerAnnouncementFilter.swift in Sources */,
 				C5FAEAD22EE5988200ED4C27 /* Announcer.swift in Sources */,
 				0A48E4AA2ECD2100001A4908 /* UserInfoFormView.swift in Sources */,
 				0A48E4AC2EE00600001A4908 /* AuthenticationManager.swift in Sources */,
+				0A582FB82F293D8700A44267 /* AnnouncerCampusMapView.swift in Sources */,
 				C5104C712F188799000656AB /* ContentFilter.swift in Sources */,
 				C5FAEAD82EE5989B00ED4C27 /* User.swift in Sources */,
 				C5FAEAD62EE5989400ED4C27 /* Report.swift in Sources */,
@@ -350,12 +430,20 @@
 				0A48E4852ECCEBCF001A4908 /* RootTabView.swift in Sources */,
 				0ADE15672EDF646400F8D6A6 /* AnnouncementCenter.swift in Sources */,
 				0AB004792EF2E1C4007DD336 /* PostClusterView.swift in Sources */,
+				0A582FBB2F299E2400A44267 /* AnnouncementManager.swift in Sources */,
 				0A48E49D2ECCF948001A4908 /* CreatePostView.swift in Sources */,
 				0A48E4A42ECD1B90001A4908 /* AppRouter.swift in Sources */,
 				0AB0047B2EF2E1DA007DD336 /* ClusterPostListView.swift in Sources */,
+				0A582FCA2F29A5E400A44267 /* StatusBadge.swift in Sources */,
 				0AB004772EF2E180007DD336 /* PostCluster.swift in Sources */,
+				0A582FB22F29336C00A44267 /* AnnouncerHomeView.swift in Sources */,
+				0A582FCF2F29AE9A00A44267 /* AnnouncerProfileView.swift in Sources */,
+				0A582FB62F293AC800A44267 /* AnnouncerRootTabView.swift in Sources */,
+				0A582FBF2F299E9500A44267 /* CreateAnnouncementMapView.swift in Sources */,
 				0A48E46D2ECCE941001A4908 /* AUGOApp.swift in Sources */,
 				0ADE15692EDF64A100F8D6A6 /* AnnouncementOverlay.swift in Sources */,
+				0A582FC62F29A57200A44267 /* AnnouncerAnnouncementsView.swift in Sources */,
+				0A582FC32F29A53100A44267 /* AnnouncerAnnouncementsViewModel.swift in Sources */,
 				0AB261FD2EE019B200FA8431 /* Theme.swift in Sources */,
 				C5FAEAD42EE5988D00ED4C27 /* Post.swift in Sources */,
 				0A48E47E2ECCEAC6001A4908 /* CampusMapView.swift in Sources */,

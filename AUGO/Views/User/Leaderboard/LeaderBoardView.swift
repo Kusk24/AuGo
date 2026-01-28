@@ -169,9 +169,10 @@ struct LeaderboardView: View {
                             email: email,
                             faculty: faculty,
                             birthDate: (data["birthDate"] as? Timestamp)?.dateValue() ?? Date(),
+                            joinedDate: (data["joinedDate"] as? Timestamp)?.dateValue() ?? Date(),
+                            lastWarningDate: (data["lastWarningDate"] as? Timestamp)?.dateValue(),
                             warningCount: data["warningCount"] as? Int ?? 0,
                             status: User.UserStatus(rawValue: status) ?? .active,
-                            joinedDate: (data["joinedDate"] as? Timestamp)?.dateValue() ?? Date(),
                             score: data["score"] as? Int ?? 0
                         )
                         

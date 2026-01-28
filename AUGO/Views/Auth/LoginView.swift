@@ -33,13 +33,10 @@ struct LoginView: View {
                     Spacer()
                     
                     // MARK: Sign in with Google Button
+                    // MARK: Sign in with Google Button
                     Button {
                         Task {
                             await authManager.signInWithGoogle()
-                            // Only navigate if authentication succeeded AND no errors
-                            if authManager.isAuthenticated && authManager.errorMessage == nil {
-                                showInfoForm = true
-                            }
                         }
                     } label: {
                         HStack(spacing: 12) {
@@ -49,7 +46,7 @@ struct LoginView: View {
                             } else {
                                 Image(systemName: "globe")
                                     .font(.system(size: 20))
-                                
+
                                 Text("Sign in with Google")
                                     .font(.headline)
                             }
@@ -64,7 +61,7 @@ struct LoginView: View {
                     }
                     .disabled(authManager.isLoading)
                     .padding(.horizontal, 32)
-                    
+
                     // Error Message
                     if let error = authManager.errorMessage {
                         Text(error)
@@ -84,9 +81,6 @@ struct LoginView: View {
                         .frame(height: 60)
                 }
                 .padding()
-            }
-            .navigationDestination(isPresented: $showInfoForm) {
-                UserInfoFormView()
             }
         }
     }

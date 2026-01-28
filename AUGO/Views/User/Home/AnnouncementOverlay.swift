@@ -137,7 +137,7 @@ private struct AnnouncementCard: View {
 
                 Text("•")
 
-                Text(dateString(announcement.date))
+                Text(dateString(announcement.createdAt))
                     .font(.caption)
                     .foregroundColor(.secondary)
             }

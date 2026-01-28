@@ -1,68 +1,56 @@
 import Foundation
-import Combine
-import CoreLocation
 import FirebaseFirestore
 import FirebaseAuth
+import Combine
 
 @MainActor
-final class AnnouncementCenter: ObservableObject {
+final class AnnouncerAnnouncementsViewModel: ObservableObject {
 
     @Published var announcements: [Announcement] = []
+    @Published var selectedFilter: AnnouncerAnnouncementFilter = .all
+    @Published var isLoading = false
 
     private let db = Firestore.firestore()
     private var listener: ListenerRegistration?
-
-    init() {
-        listenToActiveAnnouncements()
-    }
 
     deinit {
         listener?.remove()
     }
 
-    // MARK: - Unread count
-    var unreadCount: Int {
-        announcements.filter { !($0.isRead ?? false) }.count
-    }
-
-    // MARK: - Read state
-    func markAllAsRead() {
-        for index in announcements.indices {
-            announcements[index].isRead = true
+    func startListening() {
+        guard let email = Auth.auth().currentUser?.email?.lowercased() else {
+            print("❌ No logged-in email")
+            return
         }
-    }
 
-    func markAsRead(_ announcement: Announcement) {
-        if let idx = announcements.firstIndex(where: { $0.id == announcement.id }) {
-            announcements[idx].isRead = true
-        }
-    }
+        print("👤 CURRENT EMAIL:", email)
+        isLoading = true
 
-    // MARK: - Firestore listener (ACTIVE announcements only)
-    private func listenToActiveAnnouncements() {
         listener = db.collection("announcements")
-            .whereField("status", isEqualTo: "active")
+            .whereField("createdByEmail", isEqualTo: email)   // ✅ FIX
             .addSnapshotListener { [weak self] snapshot, error in
                 guard let self else { return }
+                self.isLoading = false
 
                 if let error = error {
-                    print("❌ Firestore announcement error:", error)
+                    print("❌ Firestore error:", error)
                     return
                 }
 
-                guard let documents = snapshot?.documents else {
-                    self.announcements = []
-                    return
-                }
-
-                self.announcements = documents.compactMap { doc in
-                    self.parseAnnouncement(doc)
-                }
-                .sorted { $0.createdAt > $1.createdAt }
+                self.announcements = snapshot?.documents
+                    .compactMap(self.parseAnnouncement)
+                    .sorted { $0.createdAt > $1.createdAt } ?? []
             }
     }
 
-    // MARK: - Firestore → Model
+    var filteredAnnouncements: [Announcement] {
+        guard let status = selectedFilter.status else {
+            return announcements
+        }
+        return announcements.filter { $0.status == status }
+    }
+
+    // MARK: - Parsing (STRICT)
     private func parseAnnouncement(_ doc: QueryDocumentSnapshot) -> Announcement? {
         let data = doc.data()
 
@@ -72,8 +60,8 @@ final class AnnouncementCenter: ObservableObject {
             let department = data["department"] as? String,
             let isUrgent = data["isUrgent"] as? Bool,
             let createdByUID = data["createdByUID"] as? String,
-            let createdByName = data["createdByName"] as? String,
             let createdByEmail = data["createdByEmail"] as? String,
+            let createdByName = data["createdByName"] as? String,
             let statusRaw = data["status"] as? String,
             let status = AnnouncementStatus(rawValue: statusRaw),
             let createdAt = (data["createdAt"] as? Timestamp)?.dateValue(),
@@ -81,13 +69,12 @@ final class AnnouncementCenter: ObservableObject {
             let startDate = (data["startDate"] as? Timestamp)?.dateValue(),
             let endDate = (data["endDate"] as? Timestamp)?.dateValue()
         else {
-            print("⚠️ Invalid announcement document:", doc.documentID)
+            print("❌ Invalid announcement:", doc.documentID)
             return nil
         }
 
         let approvedAt = (data["approvedAt"] as? Timestamp)?.dateValue()
         let rejectedAt = (data["rejectedAt"] as? Timestamp)?.dateValue()
-
         let latitude = data["latitude"] as? Double
         let longitude = data["longitude"] as? Double
         let link = data["link"] as? String
@@ -111,7 +98,7 @@ final class AnnouncementCenter: ObservableObject {
             endDate: endDate,
             latitude: latitude,
             longitude: longitude,
-            isRead: false
+            isRead: nil
         )
     }
 }
