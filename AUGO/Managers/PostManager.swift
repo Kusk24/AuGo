@@ -16,6 +16,13 @@ class PostManager: ObservableObject {
     private var userPostsListener: ListenerRegistration?
     private var allPostsListener: ListenerRegistration?
     
+    init() {
+        // Start listening for all posts immediately when manager is created
+        print("🚀 PostManager initialized - starting real-time listener")
+        // Use fallback query by default (doesn't require compound index)
+        fetchAllPostsSimple()
+    }
+    
     deinit {
         userPostsListener?.remove()
         allPostsListener?.remove()
@@ -94,11 +101,17 @@ class PostManager: ObservableObject {
     
     // MARK: - Fetch All Posts (Real-time - Last 24 hours only)
     func fetchAllPosts() {
+        // Remove existing listener before creating a new one
         allPostsListener?.remove()
+        
+        print("🔄 Starting to fetch all posts...")
+        print("🔍 Device: \(UIDevice.current.name)")
         
         // Calculate 24 hours ago
         let twentyFourHoursAgo = Calendar.current.date(byAdding: .hour, value: -24, to: Date()) ?? Date()
+        print("⏰ Fetching posts newer than: \(twentyFourHoursAgo)")
         
+        // Try with 24-hour filter first
         allPostsListener = db.collection("posts")
             .whereField("status", isEqualTo: "active")
             .whereField("date", isGreaterThan: Timestamp(date: twentyFourHoursAgo))
@@ -109,21 +122,164 @@ class PostManager: ObservableObject {
                 
                 Task { @MainActor in
                     if let error = error {
-                        print("❌ Error fetching all posts: \(error)")
+                        let errorMsg = error.localizedDescription
+                        print("❌ Error fetching posts with 24h filter: \(errorMsg)")
+                        
+                        // If it's an index error, try fallback query
+                        if errorMsg.contains("index") || errorMsg.contains("requires an index") {
+                            print("⚠️ Index not found, using fallback query (all active posts)")
+                            self.fetchAllPostsFallback()
+                            return
+                        }
+                        
                         self.errorMessage = error.localizedDescription
                         return
                     }
                     
                     guard let documents = snapshot?.documents else {
-                        print("⚠️ No posts found")
+                        print("⚠️ No documents in snapshot")
                         self.allPosts = []
                         return
                     }
                     
                     print("✅ Fetched \(documents.count) posts from last 24 hours")
+                    print("📱 Device: \(UIDevice.current.name)")
                     
-                    self.allPosts = documents.compactMap { document in
+                    let parsed = documents.compactMap { document in
                         self.parsePost(from: document)
+                    }
+                    
+                    print("✅ Successfully parsed \(parsed.count) posts")
+                    
+                    if !parsed.isEmpty {
+                        print("📍 Sample posts:")
+                        for (index, post) in parsed.prefix(3).enumerated() {
+                            print("   \(index + 1). '\(post.content)' at (\(post.latitude), \(post.longitude)) - \(post.date)")
+                        }
+                    }
+                    
+                    self.allPosts = parsed
+                    
+                    if parsed.isEmpty && !documents.isEmpty {
+                        print("⚠️ WARNING: Documents exist but parsing failed!")
+                        print("⚠️ First document data: \(documents.first?.data() ?? [:])")
+                    }
+                }
+            }
+    }
+    
+    // MARK: - Fallback: Fetch All Active Posts (no time filter)
+    private func fetchAllPostsFallback() {
+        allPostsListener?.remove()
+        
+        print("🔄 Using fallback: Fetching all active posts without time filter")
+        print("📱 Device: \(UIDevice.current.name)")
+        
+        allPostsListener = db.collection("posts")
+            .whereField("status", isEqualTo: "active")
+            .order(by: "date", descending: true)
+            .limit(to: 100)
+            .addSnapshotListener { [weak self] snapshot, error in
+                guard let self = self else { return }
+                
+                Task { @MainActor in
+                    if let error = error {
+                        print("❌ Fallback query also failed: \(error)")
+                        self.errorMessage = error.localizedDescription
+                        return
+                    }
+                    
+                    guard let documents = snapshot?.documents else {
+                        print("⚠️ No documents in fallback snapshot")
+                        self.allPosts = []
+                        return
+                    }
+                    
+                    print("✅ Fallback: Fetched \(documents.count) active posts")
+                    print("📱 Device: \(UIDevice.current.name)")
+                    
+                    // Filter to last 24 hours client-side
+                    let twentyFourHoursAgo = Calendar.current.date(byAdding: .hour, value: -24, to: Date()) ?? Date()
+                    
+                    let parsed = documents.compactMap { document -> Post? in
+                        guard let post = self.parsePost(from: document) else { return nil }
+                        // Client-side filter for 24 hours
+                        return post.date > twentyFourHoursAgo ? post : nil
+                    }
+                    
+                    print("✅ After 24h filter: \(parsed.count) posts")
+                    
+                    if !parsed.isEmpty {
+                        print("📍 Sample posts:")
+                        for (index, post) in parsed.prefix(3).enumerated() {
+                            print("   \(index + 1). '\(post.content)' at (\(post.latitude), \(post.longitude)) - \(post.date)")
+                        }
+                    }
+                    
+                    self.allPosts = parsed
+                }
+            }
+    }
+    
+    // MARK: - Fetch All Posts (Simple - No compound index needed)
+    func fetchAllPostsSimple() {
+        allPostsListener?.remove()
+        
+        print("🔄 Fetching all active posts (simple query)...")
+        print("📱 Device: \(UIDevice.current.name)")
+        
+        // Simple query that doesn't require compound index
+        allPostsListener = db.collection("posts")
+            .whereField("status", isEqualTo: "active")
+            .limit(to: 100)
+            .addSnapshotListener { [weak self] snapshot, error in
+                guard let self = self else { return }
+                
+                Task { @MainActor in
+                    if let error = error {
+                        print("❌ Error fetching posts: \(error.localizedDescription)")
+                        self.errorMessage = error.localizedDescription
+                        return
+                    }
+                    
+                    guard let documents = snapshot?.documents else {
+                        print("⚠️ No documents in snapshot")
+                        self.allPosts = []
+                        return
+                    }
+                    
+                    print("✅ Fetched \(documents.count) documents from Firestore")
+                    
+                    // Parse all posts
+                    let allParsed = documents.compactMap { document in
+                        self.parsePost(from: document)
+                    }
+                    
+                    print("✅ Successfully parsed \(allParsed.count) posts")
+                    
+                    // Filter to last 24 hours client-side
+                    let twentyFourHoursAgo = Calendar.current.date(byAdding: .hour, value: -24, to: Date()) ?? Date()
+                    let filtered = allParsed.filter { $0.date > twentyFourHoursAgo }
+                    
+                    print("✅ After 24h filter: \(filtered.count) posts")
+                    
+                    if !filtered.isEmpty {
+                        print("📍 Sample posts:")
+                        for (index, post) in filtered.prefix(3).enumerated() {
+                            print("   \(index + 1). '\(post.content)' at (\(post.latitude), \(post.longitude)) - \(post.date)")
+                        }
+                    } else if !allParsed.isEmpty {
+                        print("⚠️ Posts exist but all are older than 24 hours")
+                        print("📅 Oldest post: \(allParsed.map { $0.date }.min() ?? Date())")
+                        print("📅 Newest post: \(allParsed.map { $0.date }.max() ?? Date())")
+                    }
+                    
+                    // Sort by date descending
+                    self.allPosts = filtered.sorted { $0.date > $1.date }
+                    
+                    if allParsed.isEmpty && !documents.isEmpty {
+                        print("⚠️ WARNING: Documents exist but parsing failed!")
+                        print("⚠️ First document data: \(documents.first?.data() ?? [:])")
                     }
                 }
             }
@@ -189,18 +345,56 @@ class PostManager: ObservableObject {
         
         guard let userId = data["userId"] as? String,
               let content = data["content"] as? String,
-              let categoryRaw = data["category"] as? String,
-              let category = Post.PostCategory(rawValue: categoryRaw),
+              let categoryRawAny = data["category"],
               let latitude = data["latitude"] as? Double,
               let longitude = data["longitude"] as? Double else {
-            print("⚠️ Missing required fields for post: \(document.documentID)")
+            print("⚠️ Missing required fields for post: \(document.documentID) -> \(data)")
             return nil
         }
+
+        // Normalize category (handle different casings or accidental non-string values)
+        let categoryRaw: String
+        if let catStr = categoryRawAny as? String {
+            categoryRaw = catStr.lowercased()
+        } else {
+            categoryRaw = String(describing: categoryRawAny).lowercased()
+        }
         
+        guard let category = Post.PostCategory(rawValue: categoryRaw) else {
+            print("⚠️ Unknown category '\(categoryRawAny)' for post: \(document.documentID). Falling back to .casual")
+            // Fall back to a sensible default to avoid dropping the post entirely
+            let fallbackCategory: Post.PostCategory = .casual
+            let post = Post(
+                id: document.documentID,
+                userId: userId,
+                date: (data["date"] as? Timestamp)?.dateValue() ?? Date(),
+                content: content,
+                category: fallbackCategory,
+                latitude: latitude,
+                longitude: longitude,
+                likeCount: data["likeCount"] as? Int ?? 0,
+                dislikeCount: data["dislikeCount"] as? Int ?? 0,
+                reportCount: data["reportCount"] as? Int ?? 0,
+                status: Post.PostStatus(rawValue: data["status"] as? String ?? "active") ?? .active
+            )
+            return post
+        }
+
+        // Safely parse date (Timestamp or Date), otherwise default to now so it still appears
+        let parsedDate: Date
+        if let ts = data["date"] as? Timestamp {
+            parsedDate = ts.dateValue()
+        } else if let dt = data["date"] as? Date {
+            parsedDate = dt
+        } else {
+            print("⚠️ Missing/invalid date for post: \(document.documentID). Defaulting to now(). Raw: \(String(describing: data["date"]))")
+            parsedDate = Date()
+        }
+
         let post = Post(
             id: document.documentID,
             userId: userId,
-            date: (data["date"] as? Timestamp)?.dateValue() ?? Date(),
+            date: parsedDate,
             content: content,
             category: category,
             latitude: latitude,
@@ -210,7 +404,7 @@ class PostManager: ObservableObject {
             reportCount: data["reportCount"] as? Int ?? 0,
             status: Post.PostStatus(rawValue: data["status"] as? String ?? "active") ?? .active
         )
-        
+
         return post
     }
     

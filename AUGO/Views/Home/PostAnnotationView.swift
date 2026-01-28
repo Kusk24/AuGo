@@ -8,18 +8,26 @@ struct PostPinView: View {
 
     var body: some View {
         Image(systemName: "mappin.circle.fill")
-            .font(.system(size: 18))   // unified size
-            .foregroundColor(colorFor(post.category))  // pure color
+            .font(.system(size: 18))
+            .foregroundColor(colorFor(post.category))
     }
 
     private func colorFor(_ category: PostCategory) -> Color {
         switch category {
         case .casual:
-            return .teal                       // casual = teal
+            return .teal
         case .lostFound:
-            return .red                        // lost & found = red
+            return .red
         case .complaint:
-            return Color(red: 1.0, green: 0.84, blue: 0.0) // dandelion
+            return Color(red: 1.0, green: 0.84, blue: 0.0) // yellow
+        case .event:
+            return .purple
+        case .question:
+            return .blue
+        case .announcement:
+            return .orange
+        case .arChallenge:
+            return .green
         }
     }
 }
@@ -33,38 +41,65 @@ struct PostBubbleView: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(post.message)
-                    .font(.caption)
-                    .foregroundColor(.black)
-
+            VStack(alignment: .leading, spacing: 8) {
+                // Category badge
                 HStack {
-                    Text(post.author)
+                    Text(post.category.rawValue)
                         .font(.caption2.bold())
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(colorFor(post.category).opacity(0.2))
+                        .foregroundColor(colorFor(post.category))
+                        .clipShape(Capsule())
+                    
+                    Spacer()
+                    
+                    // Report button
+                    if let onReport = onReport {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundColor(.red.opacity(0.7))
+                            .padding(8)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                onReport()
+                            }
+                    }
+                }
+                
+                // Message content
+                Text(post.message)
+                    .font(.subheadline)
+                    .foregroundColor(.black)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                // Author and time info
+                HStack(spacing: 6) {
+                    Image(systemName: "person.circle.fill")
+                        .font(.caption2)
+                        .foregroundColor(colorFor(post.category))
+                    
+                    Text("Posted by \(post.author)")
+                        .font(.caption)
                         .foregroundColor(.gray)
 
                     Spacer()
 
-                    Text(relativeTime(from: post.createdAt))
+                    Image(systemName: "clock")
                         .font(.caption2)
                         .foregroundColor(.gray)
                     
-                    // Report button
-                    if let onReport = onReport {
-                        Button(action: onReport) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.caption2)
-                                .foregroundColor(.red.opacity(0.7))
-                        }
-                        .buttonStyle(.plain)
-                    }
+                    Text(relativeTime(from: post.createdAt))
+                        .font(.caption)
+                        .foregroundColor(.gray)
                 }
             }
-            .padding(8)
+            .padding(12)
+            .frame(minWidth: 200, maxWidth: 280)
             .background(
                 RoundedRectangle(cornerRadius: 12)
                     .fill(.white)
-                    .shadow(color: .black.opacity(0.15), radius: 3, y: 2)
+                    .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
             )
 
             Triangle()
@@ -85,6 +120,14 @@ struct PostBubbleView: View {
             return .red
         case .complaint:
             return Color(red: 1.0, green: 0.84, blue: 0.0)
+        case .event:
+            return .purple
+        case .question:
+            return .blue
+        case .announcement:
+            return .orange
+        case .arChallenge:
+            return .green
         }
     }
 
@@ -113,16 +156,19 @@ struct PostAnnotationView: View {
     let post: CampusPost
     let isSelected: Bool
     let onTap: () -> Void
+    var onReport: (() -> Void)? = nil
 
     var body: some View {
-        Button(action: onTap) {
+        Group {
             if isSelected {
-                PostBubbleView(post: post)
+                PostBubbleView(post: post, onReport: onReport)
             } else {
                 PostPinView(post: post)
             }
         }
-        .buttonStyle(.plain)
+        .onTapGesture {
+            onTap()
+        }
     }
 }
 

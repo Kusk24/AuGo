@@ -4,7 +4,7 @@ import FirebaseAuth
 struct ProfileView: View {
     
     @EnvironmentObject var authManager: AuthenticationManager
-    @StateObject private var postManager = PostManager()
+    @EnvironmentObject var postManager: PostManager
 
     @State private var notificationsOn = true
     @State private var showLogoutAlert = false

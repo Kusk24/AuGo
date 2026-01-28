@@ -7,7 +7,7 @@ struct CreatePostView: View {
     @Binding var isPresentedFromHome: Bool
     @EnvironmentObject var authManager: AuthenticationManager
     @EnvironmentObject var mapViewModel: CampusMapViewModel
-    @StateObject private var postManager = PostManager()
+    @EnvironmentObject var postManager: PostManager
 
     @State private var message: String = ""
     @State private var selectedCategory: Post.PostCategory? = nil

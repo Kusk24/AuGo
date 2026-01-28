@@ -5,6 +5,10 @@ enum PostCategory: String, CaseIterable, Identifiable {
     case casual = "Casual"
     case lostFound = "Lost & Found"
     case complaint = "Complaint"
+    case event = "Event"
+    case question = "Question"
+    case announcement = "Announcement"
+    case arChallenge = "AR Challenge"
 
     var id: String { rawValue }
 
@@ -13,6 +17,10 @@ enum PostCategory: String, CaseIterable, Identifiable {
         case .casual: return "Casual"
         case .lostFound: return "Lost"
         case .complaint: return "Comp"
+        case .event: return "Event"
+        case .question: return "Q"
+        case .announcement: return "Ann"
+        case .arChallenge: return "AR"
         }
     }
 }
