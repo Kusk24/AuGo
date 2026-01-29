@@ -40,6 +40,7 @@
 		C55715C12EDFE273009B2CB9 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = C55715C02EDFE273009B2CB9 /* FirebaseFirestore */; };
 		C55715CA2EE01EAF009B2CB9 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = C55715C92EE01EAF009B2CB9 /* GoogleSignIn */; };
 		C55715CC2EE01EAF009B2CB9 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = C55715CB2EE01EAF009B2CB9 /* GoogleSignInSwift */; };
+		C57024822F2AA2DB008F8696 /* PostDetailCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C57024812F2AA2DB008F8696 /* PostDetailCardView.swift */; };
 		C5FAEAD22EE5988200ED4C27 /* Announcer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5FAEAD12EE5988200ED4C27 /* Announcer.swift */; };
 		C5FAEAD42EE5988D00ED4C27 /* Post.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5FAEAD32EE5988D00ED4C27 /* Post.swift */; };
 		C5FAEAD62EE5989400ED4C27 /* Report.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5FAEAD52EE5989400ED4C27 /* Report.swift */; };
@@ -80,6 +81,7 @@
 		C5104C702F188799000656AB /* ContentFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentFilter.swift; sourceTree = "<group>"; };
 		C55715BB2EDFE01E009B2CB9 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		C55715C22EE003C8009B2CB9 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		C57024812F2AA2DB008F8696 /* PostDetailCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostDetailCardView.swift; sourceTree = "<group>"; };
 		C5FAEAD12EE5988200ED4C27 /* Announcer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Announcer.swift; sourceTree = "<group>"; };
 		C5FAEAD32EE5988D00ED4C27 /* Post.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Post.swift; sourceTree = "<group>"; };
 		C5FAEAD52EE5989400ED4C27 /* Report.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Report.swift; sourceTree = "<group>"; };
@@ -178,6 +180,7 @@
 				0AB0047A2EF2E1D3007DD336 /* ClusterPostListView.swift */,
 				0ADE15682EDF649600F8D6A6 /* AnnouncementOverlay.swift */,
 				0AB261FA2EDFF92100FA8431 /* SingleAnnouncementView.swift */,
+				C57024812F2AA2DB008F8696 /* PostDetailCardView.swift */,
 			);
 			path = Home;
 			sourceTree = "<group>";
@@ -356,6 +359,7 @@
 				0AB004772EF2E180007DD336 /* PostCluster.swift in Sources */,
 				0A48E46D2ECCE941001A4908 /* AUGOApp.swift in Sources */,
 				0ADE15692EDF64A100F8D6A6 /* AnnouncementOverlay.swift in Sources */,
+				C57024822F2AA2DB008F8696 /* PostDetailCardView.swift in Sources */,
 				0AB261FD2EE019B200FA8431 /* Theme.swift in Sources */,
 				C5FAEAD42EE5988D00ED4C27 /* Post.swift in Sources */,
 				0A48E47E2ECCEAC6001A4908 /* CampusMapView.swift in Sources */,

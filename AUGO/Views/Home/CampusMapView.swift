@@ -24,8 +24,9 @@ struct CampusMapView: View {
     @State private var postMapping: [UUID: Post] = [:]
     
     @State private var showReportAlert = false
-    @State private var postToReport: Post?
-
+    @State private var postToReport: Post?    
+    @State private var showPostDetail = false
+    @State private var selectedPost: CampusPost?
     // MARK: - FILTER
     @State private var selectedCategories: Set<Post.PostCategory> = Set(Post.PostCategory.allCases)
 
@@ -84,9 +85,8 @@ struct CampusMapView: View {
             result.append(PostCluster(coordinate: grouped[0].coordinate, posts: grouped))
         }
         
-        DispatchQueue.main.async {
-            postMapping = newMapping
-        }
+        // Update mapping directly since we're already on main thread
+        postMapping = newMapping
 
         print("✅ Created \(result.count) clusters with total of \(newMapping.count) posts")
         return result
@@ -248,14 +248,95 @@ struct CampusMapView: View {
     @MapContentBuilder
     private var postsMapAnnotations: some MapContent {
         ForEach(filteredClusters) { cluster in
-            Annotation("", coordinate: cluster.coordinate) {
-                if cluster.count == 1 {
-                    makeSinglePostAnnotation(cluster.posts[0])
-                } else {
-                    makeClusterAnnotation(cluster)
+            if cluster.count == 1 {
+                let post = cluster.posts[0]
+                Annotation("", coordinate: cluster.coordinate) {
+                    VStack(spacing: 4) {
+                        // Pin icon
+                        Circle()
+                            .fill(colorForCategory(convertPostCategory(post.category)))
+                            .frame(width: 30, height: 30)
+                            .overlay(
+                                Image(systemName: "mappin.fill")
+                                    .foregroundColor(.white)
+                                    .font(.system(size: 14))
+                            )
+                        
+                        // Preview label
+                        Text(String(post.message.prefix(20)))
+                            .font(.caption2)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.white)
+                            .cornerRadius(8)
+                            .shadow(radius: 2)
+                    }
+                    .onTapGesture {
+                        print("📍 Tapped post: \(post.message)")
+                        selectedPost = post
+                        showPostDetail = true
+                    }
+                }
+                .tag(post.id)
+            } else {
+                Annotation("", coordinate: cluster.coordinate) {
+                    ZStack {
+                        PostClusterView(cluster: cluster) {
+                            selectedCluster = cluster
+                            showClusterSheet = true
+                        }
+                    }
+                    .onTapGesture {
+                        selectedCluster = cluster
+                        showClusterSheet = true
+                    }
                 }
             }
         }
+    }
+    
+    // Helper functions for categories
+    private func convertPostCategory(_ category: PostCategory) -> Post.PostCategory {
+        switch category {
+        case .casual:
+            return .casual
+        case .event:
+            return .event
+        case .question:
+            return .question
+        case .announcement:
+            return .announcement
+        case .arChallenge:
+            return .arChallenge
+        case .lostFound:
+            return .casual
+        case .complaint:
+            return .casual
+        }
+    }
+    
+    private func colorForCategory(_ category: Post.PostCategory) -> Color {
+        switch category {
+        case .casual:
+            return .teal
+        case .event:
+            return .purple
+        case .question:
+            return .blue
+        case .announcement:
+            return .orange
+        case .arChallenge:
+            return .green
+        }
+    }
+    
+    private func relativeTime(from date: Date) -> String {
+        let mins = Int(-date.timeIntervalSinceNow / 60)
+        if mins < 1 { return "Just now" }
+        if mins < 60 { return "\(mins)m ago" }
+        return "\(mins/60)h ago"
     }
     
     @MapContentBuilder
@@ -324,6 +405,27 @@ struct CampusMapView: View {
         .sheet(isPresented: $showClusterSheet) {
             if let cluster = selectedCluster {
                 ClusterPostListView(posts: cluster.posts)
+            }
+        }
+        .sheet(isPresented: $showPostDetail, onDismiss: {
+            // Clear selected post when sheet is dismissed
+            selectedPost = nil
+            selectedPostID = nil
+        }) {
+            if let post = selectedPost {
+                PostDetailCardView(
+                    post: post,
+                    firebasePost: postMapping[post.id],
+                    onReport: {
+                        if let firebasePost = postMapping[post.id] {
+                            postToReport = firebasePost
+                            showReportAlert = true
+                            showPostDetail = false
+                        }
+                    }
+                )
+                .presentationDetents([PresentationDetent.medium, PresentationDetent.large])
+                .presentationDragIndicator(Visibility.visible)
             }
         }
         .navigationDestination(isPresented: $isPresentingCreatePost) {

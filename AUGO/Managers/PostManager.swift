@@ -355,13 +355,15 @@ class PostManager: ObservableObject {
         // Normalize category (handle different casings or accidental non-string values)
         let categoryRaw: String
         if let catStr = categoryRawAny as? String {
-            categoryRaw = catStr.lowercased()
+            // Capitalize first letter to match Post.PostCategory rawValue format
+            categoryRaw = catStr.prefix(1).uppercased() + catStr.dropFirst().lowercased()
         } else {
-            categoryRaw = String(describing: categoryRawAny).lowercased()
+            let str = String(describing: categoryRawAny)
+            categoryRaw = str.prefix(1).uppercased() + str.dropFirst().lowercased()
         }
         
         guard let category = Post.PostCategory(rawValue: categoryRaw) else {
-            print("⚠️ Unknown category '\(categoryRawAny)' for post: \(document.documentID). Falling back to .casual")
+            print("⚠️ Unknown category '\(categoryRawAny)' (normalized: '\(categoryRaw)') for post: \(document.documentID). Falling back to .casual")
             // Fall back to a sensible default to avoid dropping the post entirely
             let fallbackCategory: Post.PostCategory = .casual
             let post = Post(

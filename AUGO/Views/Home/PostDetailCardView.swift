@@ -1,5 +1,5 @@
 import SwiftUI
-import MapKit
+internal import MapKit
 
 struct PostDetailCardView: View {
     let post: CampusPost

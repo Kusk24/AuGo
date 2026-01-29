@@ -1,6 +1,7 @@
 import SwiftUI
 import FirebaseAuth
 import CoreLocation
+import Combine
 internal import MapKit
 
 struct CreatePostView: View {
@@ -14,7 +15,9 @@ struct CreatePostView: View {
 
     @State private var showAlert = false
     @State private var alertMessage = ""
-    @State private var navigateToMap = false
+    @State private var isSubmitting = false
+    
+    @StateObject private var locationManager = LocationManager()
 
     // Real-time content filtering
     private var contentFilterResult: (contains: Bool, detectedWords: [String]) {
@@ -132,10 +135,16 @@ struct CreatePostView: View {
                 .padding(.horizontal)
 
                 Button {
-                    proceedToMapSelection()
+                    Task {
+                        await submitPost()
+                    }
                 } label: {
                     HStack {
-                        Text("Post")
+                        if isSubmitting {
+                            ProgressView()
+                                .tint(.white)
+                        }
+                        Text(isSubmitting ? "Posting..." : "Post")
                             .font(.headline)
                     }
                     .frame(maxWidth: .infinity)
@@ -144,30 +153,30 @@ struct CreatePostView: View {
                     .foregroundColor(.white)
                     .cornerRadius(10)
                 }
-                .disabled(!canPost)
+                .disabled(!canPost || isSubmitting)
                 .padding(.horizontal)
                 .padding(.bottom, 8)
             }
         }
         .navigationTitle("Create Post")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(isPresented: $navigateToMap) {
-            CreatePostMapView(
-                isPresentedFromHome: $isPresentedFromHome,
-                message: message,
-                category: selectedCategory ?? .casual
-            )
+        .onAppear {
+            locationManager.requestLocation()
         }
         .alert("Post", isPresented: $showAlert) {
-            Button("OK") { }
+            Button("OK") {
+                if alertMessage.contains("successfully") {
+                    isPresentedFromHome = false
+                }
+            }
         } message: {
             Text(alertMessage)
         }
     }
     
-    // MARK: - Proceed to Map Selection
-    private func proceedToMapSelection() {
-        // Check for inappropriate content before proceeding
+    // MARK: - Submit Post with Current Location
+    private func submitPost() async {
+        // Check for inappropriate content
         let filterResult = ContentFilter.containsInappropriateContent(message)
         if filterResult.contains {
             alertMessage = ContentFilter.getValidationMessage(for: filterResult.detectedWords)
@@ -175,7 +184,82 @@ struct CreatePostView: View {
             return
         }
         
-        // Navigate to map for location selection
-        navigateToMap = true
+        guard let userId = authManager.user?.uid else {
+            alertMessage = "Error: User not authenticated"
+            showAlert = true
+            return
+        }
+        
+        // Get current location or use campus center
+        let coordinate: CLLocationCoordinate2D
+        if let userLocation = locationManager.location?.coordinate {
+            coordinate = userLocation
+            print("📍 Using user's current location: \(coordinate.latitude), \(coordinate.longitude)")
+        } else {
+            coordinate = mapViewModel.campusRegion.center
+            print("📍 Using campus center as fallback: \(coordinate.latitude), \(coordinate.longitude)")
+        }
+        
+        isSubmitting = true
+        
+        do {
+            let postId = try await postManager.createPost(
+                content: message,
+                category: selectedCategory ?? .casual,
+                userId: userId,
+                coordinate: coordinate
+            )
+            
+            print("✅ Post created with ID: \(postId) at location: \(coordinate.latitude), \(coordinate.longitude)")
+            alertMessage = "Post created successfully at your current location!"
+            showAlert = true
+            isSubmitting = false
+            
+        } catch {
+            alertMessage = "Failed to create post: \(error.localizedDescription)"
+            showAlert = true
+            isSubmitting = false
+        }
+    }
+}
+
+// MARK: - Location Manager
+class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
+    private let manager = CLLocationManager()
+    @Published var location: CLLocation?
+    @Published var authorizationStatus: CLAuthorizationStatus?
+    
+    override init() {
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyBest
+    }
+    
+    func requestLocation() {
+        authorizationStatus = manager.authorizationStatus
+        
+        if authorizationStatus == .notDetermined {
+            manager.requestWhenInUseAuthorization()
+        }
+        
+        if authorizationStatus == .authorizedWhenInUse || authorizationStatus == .authorizedAlways {
+            manager.requestLocation()
+        }
+    }
+    
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        location = locations.first
+        print("📍 Location updated: \(location?.coordinate.latitude ?? 0), \(location?.coordinate.longitude ?? 0)")
+    }
+    
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        print("❌ Location error: \(error.localizedDescription)")
+    }
+    
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        authorizationStatus = manager.authorizationStatus
+        if authorizationStatus == .authorizedWhenInUse || authorizationStatus == .authorizedAlways {
+            manager.requestLocation()
+        }
     }
 }
