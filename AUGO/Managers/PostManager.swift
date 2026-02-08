@@ -319,17 +319,94 @@ class PostManager: ObservableObject {
         }
     }
     
-    // MARK: - Like/Dislike
-    func likePost(_ postId: String) async throws {
-        try await db.collection("posts").document(postId).updateData([
-            "likeCount": FieldValue.increment(Int64(1))
-        ])
+    // MARK: - Like/Dislike with Reaction Tracking
+    
+    // Check if user has reacted to a post
+    func getUserReaction(postId: String, userId: String) async throws -> String? {
+        let reactionDoc = try await db.collection("user_reactions")
+            .document("\(userId)_\(postId)")
+            .getDocument()
+        
+        if reactionDoc.exists {
+            return reactionDoc.data()?["reaction"] as? String
+        }
+        return nil
     }
     
-    func dislikePost(_ postId: String) async throws {
-        try await db.collection("posts").document(postId).updateData([
-            "dislikeCount": FieldValue.increment(Int64(1))
-        ])
+    // Like a post (removes dislike if exists, toggles like)
+    func likePost(_ postId: String, userId: String) async throws {
+        let reactionId = "\(userId)_\(postId)"
+        let reactionRef = db.collection("user_reactions").document(reactionId)
+        let reactionDoc = try await reactionRef.getDocument()
+        
+        if let existingReaction = reactionDoc.data()?["reaction"] as? String {
+            if existingReaction == "like" {
+                // User already liked, remove like
+                try await reactionRef.delete()
+                try await db.collection("posts").document(postId).updateData([
+                    "likeCount": FieldValue.increment(Int64(-1))
+                ])
+                print("❤️ Removed like from post \(postId)")
+            } else {
+                // User disliked, change to like
+                try await reactionRef.updateData(["reaction": "like"])
+                try await db.collection("posts").document(postId).updateData([
+                    "likeCount": FieldValue.increment(Int64(1)),
+                    "dislikeCount": FieldValue.increment(Int64(-1))
+                ])
+                print("❤️ Changed dislike to like on post \(postId)")
+            }
+        } else {
+            // No reaction yet, add like
+            try await reactionRef.setData([
+                "userId": userId,
+                "postId": postId,
+                "reaction": "like",
+                "timestamp": Timestamp(date: Date())
+            ])
+            try await db.collection("posts").document(postId).updateData([
+                "likeCount": FieldValue.increment(Int64(1))
+            ])
+            print("❤️ Added like to post \(postId)")
+        }
+    }
+    
+    // Dislike a post (removes like if exists, toggles dislike)
+    func dislikePost(_ postId: String, userId: String) async throws {
+        let reactionId = "\(userId)_\(postId)"
+        let reactionRef = db.collection("user_reactions").document(reactionId)
+        let reactionDoc = try await reactionRef.getDocument()
+        
+        if let existingReaction = reactionDoc.data()?["reaction"] as? String {
+            if existingReaction == "dislike" {
+                // User already disliked, remove dislike
+                try await reactionRef.delete()
+                try await db.collection("posts").document(postId).updateData([
+                    "dislikeCount": FieldValue.increment(Int64(-1))
+                ])
+                print("👎 Removed dislike from post \(postId)")
+            } else {
+                // User liked, change to dislike
+                try await reactionRef.updateData(["reaction": "dislike"])
+                try await db.collection("posts").document(postId).updateData([
+                    "dislikeCount": FieldValue.increment(Int64(1)),
+                    "likeCount": FieldValue.increment(Int64(-1))
+                ])
+                print("👎 Changed like to dislike on post \(postId)")
+            }
+        } else {
+            // No reaction yet, add dislike
+            try await reactionRef.setData([
+                "userId": userId,
+                "postId": postId,
+                "reaction": "dislike",
+                "timestamp": Timestamp(date: Date())
+            ])
+            try await db.collection("posts").document(postId).updateData([
+                "dislikeCount": FieldValue.increment(Int64(1))
+            ])
+            print("👎 Added dislike to post \(postId)")
+        }
     }
     
     // MARK: - Report Post
@@ -411,47 +488,67 @@ class PostManager: ObservableObject {
     }
     
     // MARK: - Report Post
-    func reportPost(_ postId: String, category: Report.ReportCategory, reportedBy userId: String) async throws {
+    func reportPost(_ postId: String, category: Report.ReportCategory, reportedBy userId: String, reporterName: String, post: Post) async throws {
         isLoading = true
         errorMessage = nil
         
         do {
-            // Check if report already exists for this post
-            let existingReports = try await db.collection("reports")
-                .whereField("postId", isEqualTo: postId)
-                .getDocuments()
+            print("🚨 Starting report for post: \(postId)")
             
-            if let existingReport = existingReports.documents.first {
-                // Update existing report count
-                let currentCount = existingReport.data()["reportCount"] as? Int ?? 0
-                try await db.collection("reports").document(existingReport.documentID).updateData([
-                    "reportCount": currentCount + 1
-                ])
-                print("✅ Report count updated for post: \(postId)")
-            } else {
-                // Create new report
-                let reportData: [String: Any] = [
-                    "postId": postId,
-                    "category": category.rawValue,
-                    "reportCount": 1,
-                    "status": Report.ReportStatus.pending.rawValue,
-                    "date": Timestamp(date: Date()),
-                    "reportedBy": userId
-                ]
-                
-                try await db.collection("reports").addDocument(data: reportData)
-                print("✅ New report created for post: \(postId)")
+            // Fetch the reported user's information
+            let reportedUserDoc = try await db.collection("users").document(post.userId).getDocument()
+            let reportedUserName = reportedUserDoc.data()?["name"] as? String ?? "Unknown User"
+            
+            print("🚨 Reported user: \(reportedUserName), Reporter: \(reporterName)")
+            
+            // Get description based on category
+            let description: String
+            switch category {
+            case .spam:
+                description = "Selling products, inappropriate, suspicious links"
+            case .harassment:
+                description = "Bullying, threatening, or harassing content"
+            case .inappropriate:
+                description = "Offensive, explicit, or inappropriate content"
+            case .misinformation:
+                description = "False or misleading information"
+            case .other:
+                description = "Other violations of community guidelines"
             }
+            
+            // Create new report document (each report is a separate document)
+            // Admins can see all reports and aggregate by postId
+            let reportData: [String: Any] = [
+                "category": category.rawValue,
+                "description": description,
+                "postContent": post.content,
+                "postId": postId,
+                "reportCount": 1,
+                "reportDate": Timestamp(date: Date()),
+                "reported": [
+                    "id": post.userId,
+                    "name": reportedUserName
+                ],
+                "reporter": [
+                    "id": userId,
+                    "name": reporterName
+                ],
+                "status": Report.ReportStatus.pending.rawValue,
+                "updatedAt": Timestamp(date: Date())
+            ]
+            
+            try await db.collection("reports").addDocument(data: reportData)
+            print("✅ New report created for post: \(postId)")
             
             // Update post's report count
-            if let post = allPosts.first(where: { $0.id == postId }) {
-                try await db.collection("posts").document(postId).updateData([
-                    "reportCount": post.reportCount + 1
-                ])
-            }
+            try await db.collection("posts").document(postId).updateData([
+                "reportCount": FieldValue.increment(Int64(1))
+            ])
+            print("✅ Post report count incremented")
             
             isLoading = false
         } catch {
+            print("❌ Error reporting post: \(error.localizedDescription)")
             errorMessage = error.localizedDescription
             isLoading = false
             throw error

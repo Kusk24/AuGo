@@ -2,32 +2,43 @@ import SwiftUI
 
 struct ClusterPostListView: View {
     let posts: [CampusPost]
+    let onPostSelected: (CampusPost) -> Void
+    
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             List {
                 ForEach(posts) { post in
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(post.message)
-                            .font(.body)
-
-                        HStack {
-                            Text(post.author)
-                                .font(.caption.bold())
-                                .foregroundColor(.secondary)
-
-                            Spacer()
-
-                            Text(relativeTime(from: post.createdAt))
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
+                    Button(action: {
+                        dismiss()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            onPostSelected(post)
                         }
+                    }) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(post.message)
+                                .font(.body)
+                                .foregroundColor(.primary)
+
+                            HStack {
+                                Text(post.author)
+                                    .font(.caption.bold())
+                                    .foregroundColor(.secondary)
+
+                                Spacer()
+
+                                Text(relativeTime(from: post.createdAt))
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 6)
                     }
-                    .padding(.vertical, 6)
                 }
             }
             .listStyle(.plain)
-            .navigationTitle("Posts")
+            .navigationTitle("Posts (\(posts.count))")
             .navigationBarTitleDisplayMode(.inline)
         }
     }

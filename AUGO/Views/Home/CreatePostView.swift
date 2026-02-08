@@ -161,7 +161,18 @@ struct CreatePostView: View {
         .navigationTitle("Create Post")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            locationManager.requestLocation()
+            print("🔐 Requesting location permission...")
+            locationManager.requestWhenInUseAuthorization()
+            locationManager.startUpdatingLocation()
+            
+            // Give a moment for location to update
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                if let location = locationManager.lastLocation {
+                    print("✅ Location obtained: \(location.coordinate.latitude), \(location.coordinate.longitude)")
+                } else {
+                    print("⚠️ Location not available yet, will use fallback if needed")
+                }
+            }
         }
         .alert("Post", isPresented: $showAlert) {
             Button("OK") {
@@ -192,7 +203,7 @@ struct CreatePostView: View {
         
         // Get current location or use campus center
         let coordinate: CLLocationCoordinate2D
-        if let userLocation = locationManager.location?.coordinate {
+        if let userLocation = locationManager.lastLocation?.coordinate {
             coordinate = userLocation
             print("📍 Using user's current location: \(coordinate.latitude), \(coordinate.longitude)")
         } else {
@@ -223,43 +234,3 @@ struct CreatePostView: View {
     }
 }
 
-// MARK: - Location Manager
-class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
-    private let manager = CLLocationManager()
-    @Published var location: CLLocation?
-    @Published var authorizationStatus: CLAuthorizationStatus?
-    
-    override init() {
-        super.init()
-        manager.delegate = self
-        manager.desiredAccuracy = kCLLocationAccuracyBest
-    }
-    
-    func requestLocation() {
-        authorizationStatus = manager.authorizationStatus
-        
-        if authorizationStatus == .notDetermined {
-            manager.requestWhenInUseAuthorization()
-        }
-        
-        if authorizationStatus == .authorizedWhenInUse || authorizationStatus == .authorizedAlways {
-            manager.requestLocation()
-        }
-    }
-    
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        location = locations.first
-        print("📍 Location updated: \(location?.coordinate.latitude ?? 0), \(location?.coordinate.longitude ?? 0)")
-    }
-    
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        print("❌ Location error: \(error.localizedDescription)")
-    }
-    
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        authorizationStatus = manager.authorizationStatus
-        if authorizationStatus == .authorizedWhenInUse || authorizationStatus == .authorizedAlways {
-            manager.requestLocation()
-        }
-    }
-}

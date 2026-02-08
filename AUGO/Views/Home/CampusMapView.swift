@@ -27,18 +27,27 @@ struct CampusMapView: View {
     @State private var postToReport: Post?    
     @State private var showPostDetail = false
     @State private var selectedPost: CampusPost?
+    @State private var showSuccessAlert = false
+    @State private var alertMessage = ""
     // MARK: - FILTER
     @State private var selectedCategories: Set<Post.PostCategory> = Set(Post.PostCategory.allCases)
+    @State private var displayClusters: [PostCluster] = []
+    
+    private func updateClustersAndMapping(posts: [Post]? = nil) {
+        let postsToUse = posts ?? postManager.allPosts
+        let filtered = postsToUse.filter { selectedCategories.contains($0.category) }
+        print("🎯 Filtering: \(postsToUse.count) total posts -> \(filtered.count) after category filter")
 
-    private var filteredClusters: [PostCluster] {
-        let filtered = postManager.allPosts.filter { selectedCategories.contains($0.category) }
-        print("🎯 Filtering: \(postManager.allPosts.count) total posts -> \(filtered.count) after category filter")
-        let clusters = createClusters(from: filtered)
+        let (clusters, mapping) = createClusters(from: filtered)
         print("📌 Created \(clusters.count) clusters from \(filtered.count) posts")
-        return clusters
+
+        displayClusters = clusters
+        postMapping = mapping
+        print("🗺️ Updated postMapping with \(mapping.count) entries")
+        print("🔑 Mapping keys: \(mapping.keys.map { $0.uuidString })")
     }
     
-    private func createClusters(from posts: [Post]) -> [PostCluster] {
+    private func createClusters(from posts: [Post]) -> ([PostCluster], [UUID: Post]) {
         print("🔨 createClusters called with \(posts.count) posts")
         
         let radius: CLLocationDistance = 50
@@ -50,10 +59,8 @@ struct CampusMapView: View {
             let base = remaining.removeFirst()
             let baseLoc = CLLocation(latitude: base.latitude, longitude: base.longitude)
             
-            // TODO: Use post owner's nickname here if available, instead of userId. You may need to fetch/display actual user info.
-            // To supply the correct author field here, consider fetching nickname from user profile or caching it.
             let campusPost = CampusPost(
-                author: base.userId /* TODO: Replace with nickname if available */,
+                author: base.userId,
                 message: base.content,
                 coordinate: base.coordinate,
                 category: convertCategory(base.category),
@@ -66,10 +73,8 @@ struct CampusMapView: View {
             remaining.removeAll { post in
                 let loc = CLLocation(latitude: post.latitude, longitude: post.longitude)
                 if baseLoc.distance(from: loc) < radius {
-                    // TODO: Use post owner's nickname here if available, instead of userId. You may need to fetch/display actual user info.
-                    // To supply the correct author field here, consider fetching nickname from user profile or caching it.
                     let cp = CampusPost(
-                        author: post.userId /* TODO: Replace with nickname if available */,
+                        author: post.userId,
                         message: post.content,
                         coordinate: post.coordinate,
                         category: convertCategory(post.category),
@@ -84,19 +89,15 @@ struct CampusMapView: View {
 
             result.append(PostCluster(coordinate: grouped[0].coordinate, posts: grouped))
         }
-        
-        // Update mapping directly since we're already on main thread
-        postMapping = newMapping
 
         print("✅ Created \(result.count) clusters with total of \(newMapping.count) posts")
-        return result
+        return (result, newMapping)
     }
     
     // MARK: - Helper Methods
     
     private func handlePostsChange(_ newValue: [Post]) {
         print("📍 Posts changed: \(newValue.count) posts available")
-        print("📍 Filtered clusters: \(filteredClusters.count)")
         if newValue.isEmpty {
             print("⚠️ WARNING: No posts in postManager.allPosts")
         } else {
@@ -109,9 +110,40 @@ struct CampusMapView: View {
     
     private func reportPost(category: Report.ReportCategory) {
         guard let post = postToReport,
-              let userId = authManager.user?.uid else { return }
+              let userId = authManager.user?.uid,
+              let postId = post.id else {
+            print("❌ Missing required data for report: post=\(postToReport != nil), userId=\(authManager.user?.uid != nil)")
+            alertMessage = "Failed to report: Missing data"
+            showSuccessAlert = true
+            return
+        }
+        
+        let reporterName = authManager.userProfile?.name ?? authManager.user?.displayName ?? "Unknown"
+        print("🚨 Reporting post \(postId) with category \(category.rawValue) by \(reporterName)")
+        
         Task {
-            try? await postManager.reportPost(post.id ?? "", category: category, reportedBy: userId)
+            do {
+                try await postManager.reportPost(
+                    postId,
+                    category: category,
+                    reportedBy: userId,
+                    reporterName: reporterName,
+                    post: post
+                )
+                print("✅ Report submitted successfully")
+                
+                await MainActor.run {
+                    postToReport = nil
+                    alertMessage = "Report submitted successfully. Thank you for helping keep our community safe."
+                    showSuccessAlert = true
+                }
+            } catch {
+                print("❌ Failed to submit report: \(error.localizedDescription)")
+                await MainActor.run {
+                    alertMessage = "Failed to submit report: \(error.localizedDescription)"
+                    showSuccessAlert = true
+                }
+            }
         }
     }
     
@@ -127,6 +159,9 @@ struct CampusMapView: View {
             return .announcement
         case .arChallenge:
             return .arChallenge
+        @unknown default:
+            // Fallback to casual to avoid filtering out unknown categories
+            return .casual
         }
     }
     
@@ -247,7 +282,7 @@ struct CampusMapView: View {
     
     @MapContentBuilder
     private var postsMapAnnotations: some MapContent {
-        ForEach(filteredClusters) { cluster in
+        ForEach(displayClusters) { cluster in
             if cluster.count == 1 {
                 let post = cluster.posts[0]
                 Annotation("", coordinate: cluster.coordinate) {
@@ -257,7 +292,7 @@ struct CampusMapView: View {
                             .fill(colorForCategory(convertPostCategory(post.category)))
                             .frame(width: 30, height: 30)
                             .overlay(
-                                Image(systemName: "mappin.fill")
+                                Image(systemName: "mappin.circle.fill")
                                     .foregroundColor(.white)
                                     .font(.system(size: 14))
                             )
@@ -279,8 +314,8 @@ struct CampusMapView: View {
                         showPostDetail = true
                     }
                 }
-                .tag(post.id)
             } else {
+                // Show cluster annotation that opens list
                 Annotation("", coordinate: cluster.coordinate) {
                     ZStack {
                         PostClusterView(cluster: cluster) {
@@ -311,8 +346,10 @@ struct CampusMapView: View {
         case .arChallenge:
             return .arChallenge
         case .lostFound:
+            // Fallback to casual for unsupported backend category
             return .casual
         case .complaint:
+            // Fallback to casual for unsupported backend category
             return .casual
         }
     }
@@ -358,6 +395,18 @@ struct CampusMapView: View {
                 .overlay(
                     ZStack {
                         mapView
+                        if displayClusters.isEmpty {
+                            VStack {
+                                Text("No posts nearby")
+                                    .font(.footnote)
+                                    .padding(8)
+                                    .background(.ultraThinMaterial)
+                                    .cornerRadius(8)
+                                    .shadow(radius: 2)
+                                    .padding()
+                                Spacer()
+                            }
+                        }
                         filterMenu
                     }
                 )
@@ -379,18 +428,16 @@ struct CampusMapView: View {
             print("🗺️ CampusMapView appeared")
             print("📊 Current state: \(postManager.allPosts.count) posts in PostManager")
             print("🎯 Selected categories: \(selectedCategories.map { $0.rawValue })")
+            updateClustersAndMapping()
         }
         .onReceive(postManager.$allPosts) { newValue in
             print("📬 Received posts update: \(newValue.count) posts")
             handlePostsChange(newValue)
+            updateClustersAndMapping(posts: newValue)
         }
         .onChange(of: selectedCategories) { _, newValue in
             print("🔍 Filter changed: \(newValue.count) categories selected")
-        }
-        .alert("Report Post", isPresented: $showReportAlert) {
-            reportAlertButtons
-        } message: {
-            Text("Why are you reporting this post?")
+            updateClustersAndMapping()
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -404,7 +451,10 @@ struct CampusMapView: View {
         }
         .sheet(isPresented: $showClusterSheet) {
             if let cluster = selectedCluster {
-                ClusterPostListView(posts: cluster.posts)
+                ClusterPostListView(posts: cluster.posts) { selectedPost in
+                    self.selectedPost = selectedPost
+                    showPostDetail = true
+                }
             }
         }
         .sheet(isPresented: $showPostDetail, onDismiss: {
@@ -417,19 +467,51 @@ struct CampusMapView: View {
                     post: post,
                     firebasePost: postMapping[post.id],
                     onReport: {
+                        print("🚨 Report button tapped")
+                        print("🔑 Looking for post ID: \(post.id)")
+                        print("🔑 Available mapping keys: \(postMapping.keys.map { $0.uuidString })")
                         if let firebasePost = postMapping[post.id] {
+                            print("✅ showReportAlert set to true")
+                            print("🧾 postToReport: \(firebasePost.id ?? "nil")")
                             postToReport = firebasePost
                             showReportAlert = true
-                            showPostDetail = false
+                        } else {
+                            print("❌ No Firebase post found in mapping for post ID: \(post.id)")
+                        }
+                    },
+                    onLike: {
+                        guard let firebasePost = postMapping[post.id], 
+                              let postId = firebasePost.id,
+                              let userId = authManager.user?.uid else { return }
+                        Task {
+                            try? await postManager.likePost(postId, userId: userId)
+                        }
+                    },
+                    onDislike: {
+                        guard let firebasePost = postMapping[post.id], 
+                              let postId = firebasePost.id,
+                              let userId = authManager.user?.uid else { return }
+                        Task {
+                            try? await postManager.dislikePost(postId, userId: userId)
                         }
                     }
                 )
                 .presentationDetents([PresentationDetent.medium, PresentationDetent.large])
                 .presentationDragIndicator(Visibility.visible)
+                .alert("Report Post", isPresented: $showReportAlert) {
+                    reportAlertButtons
+                } message: {
+                    Text("Why are you reporting this post?")
+                }
             }
         }
         .navigationDestination(isPresented: $isPresentingCreatePost) {
             CreatePostView(isPresentedFromHome: $isPresentingCreatePost)
+        }
+        .alert("Report Status", isPresented: $showSuccessAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(alertMessage)
         }
     }
 

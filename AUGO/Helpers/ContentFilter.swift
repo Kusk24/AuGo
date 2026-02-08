@@ -28,22 +28,19 @@ struct ContentFilter {
         let normalizedContent = content.lowercased()
         var detectedWords: [String] = []
         
-        // Check each word in the content
-        let words = normalizedContent.components(separatedBy: .whitespacesAndNewlines)
-        
-        for word in words {
-            // Remove punctuation for better matching
-            let cleanWord = word.trimmingCharacters(in: .punctuationCharacters)
-            
-            if badWords.contains(cleanWord) {
-                detectedWords.append(cleanWord)
-            }
-        }
-        
-        // Also check for words embedded in longer strings (e.g., "f**king")
+        // Use word boundary matching to avoid false positives (e.g., "hello" containing "hell")
         for badWord in badWords {
-            if normalizedContent.contains(badWord) && !detectedWords.contains(badWord) {
-                detectedWords.append(badWord)
+            // Create regex pattern with word boundaries
+            // \b ensures the word is standalone (not part of another word)
+            let pattern = "\\b\(NSRegularExpression.escapedPattern(for: badWord))\\b"
+            
+            if let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) {
+                let range = NSRange(normalizedContent.startIndex..., in: normalizedContent)
+                let matches = regex.matches(in: normalizedContent, range: range)
+                
+                if !matches.isEmpty && !detectedWords.contains(badWord) {
+                    detectedWords.append(badWord)
+                }
             }
         }
         

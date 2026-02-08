@@ -4,11 +4,26 @@ import FirebaseFirestore
 
 struct Report: Codable, Identifiable {
     @DocumentID var id: String?
-    let date: Date
-    let postId: String
     let category: ReportCategory
+    let description: String
+    let postContent: String
+    let postId: String
     var reportCount: Int
+    let reportDate: Date
+    let reported: ReportedUser // User who created the post
+    let reporter: ReporterUser // User who reported the post
     var status: ReportStatus
+    let updatedAt: Date
+    
+    struct ReportedUser: Codable {
+        let id: String
+        let name: String
+    }
+    
+    struct ReporterUser: Codable {
+        let id: String
+        let name: String
+    }
     
     enum ReportCategory: String, Codable {
         case spam
@@ -25,12 +40,17 @@ struct Report: Codable, Identifiable {
         case dismissed
     }
     
-    init(id: String? = nil, date: Date = Date(), postId: String, category: ReportCategory, reportCount: Int = 1, status: ReportStatus = .pending) {
+    init(id: String? = nil, category: ReportCategory, description: String, postContent: String, postId: String, reportCount: Int = 1, reportDate: Date = Date(), reported: ReportedUser, reporter: ReporterUser, status: ReportStatus = .pending, updatedAt: Date = Date()) {
         self.id = id
-        self.date = date
-        self.postId = postId
         self.category = category
+        self.description = description
+        self.postContent = postContent
+        self.postId = postId
         self.reportCount = reportCount
+        self.reportDate = reportDate
+        self.reported = reported
+        self.reporter = reporter
         self.status = status
+        self.updatedAt = updatedAt
     }
 }
