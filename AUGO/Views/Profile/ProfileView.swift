@@ -11,6 +11,7 @@ struct ProfileView: View {
     @State private var userRank: Int = 0
     @State private var showDeleteAlert = false
     @State private var postToDelete: Post?
+    @State private var errorMessage: String?
     
     // Computed properties for real user data
     private var userName: String {
@@ -92,8 +93,9 @@ struct ProfileView: View {
                             userRank = rank
                         }
                         
-                        // Fetch user posts
+                        // Fetch user posts with real-time listener
                         if let userId = authManager.user?.uid {
+                            print("👤 Setting up real-time listener for user posts: \(userId)")
                             postManager.fetchUserPosts(userId: userId)
                         }
                     }
@@ -198,20 +200,38 @@ struct ProfileView: View {
         } message: {
             Text("Are you sure you want to delete this post?")
         }
-        .onDisappear {
-            postManager.stopListening()
+        .onChange(of: authManager.user?.uid) { newUserId in
+            // Re-setup listener if user changes
+            if let userId = newUserId {
+                print("👤 User changed, re-setting up listener: \(userId)")
+                postManager.fetchUserPosts(userId: userId)
+            }
         }
     }
     
     // MARK: - Delete Post
     private func deletePost(_ post: Post) async {
-        guard let postId = post.id else { return }
+        guard let postId = post.id else { 
+            print("❌ Cannot delete post: missing ID")
+            return 
+        }
+        
+        print("🗑️ Attempting to delete post: \(postId)")
+        
+        // Optimistic update - remove from UI immediately
+        postManager.optimisticDeletePost(postId)
         
         do {
             try await postManager.deletePost(postId)
-            print("✅ Post deleted")
+            print("✅ Post deleted successfully: \(postId)")
+            // The real-time listener will keep everything in sync
         } catch {
-            print("❌ Error deleting post: \(error)")
+            print("❌ Error deleting post: \(error.localizedDescription)")
+            errorMessage = "Failed to delete post: \(error.localizedDescription)"
+            // Re-fetch to restore the post if deletion failed
+            if let userId = authManager.user?.uid {
+                postManager.fetchUserPosts(userId: userId)
+            }
         }
     }
 }

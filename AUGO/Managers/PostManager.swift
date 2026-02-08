@@ -69,7 +69,10 @@ class PostManager: ObservableObject {
     
     // MARK: - Fetch User Posts (Real-time)
     func fetchUserPosts(userId: String) {
+        // Remove existing listener to avoid duplicates
         userPostsListener?.remove()
+        
+        print("🔄 Setting up real-time listener for user \(userId) posts")
         
         userPostsListener = db.collection("posts")
             .whereField("userId", isEqualTo: userId)
@@ -79,21 +82,29 @@ class PostManager: ObservableObject {
                 
                 Task { @MainActor in
                     if let error = error {
-                        print("❌ Error fetching user posts: \(error)")
+                        print("❌ Error fetching user posts: \(error.localizedDescription)")
                         self.errorMessage = error.localizedDescription
                         return
                     }
                     
                     guard let documents = snapshot?.documents else {
-                        print("⚠️ No posts found")
+                        print("⚠️ No posts found for user \(userId)")
                         self.userPosts = []
                         return
                     }
                     
-                    print("✅ Fetched \(documents.count) user posts")
+                    print("✅ Real-time update: Fetched \(documents.count) user posts")
                     
-                    self.userPosts = documents.compactMap { document in
+                    let parsed = documents.compactMap { document in
                         self.parsePost(from: document)
+                    }
+                    
+                    print("✅ Successfully parsed \(parsed.count) posts for user")
+                    self.userPosts = parsed
+                    
+                    // Print post IDs for debugging
+                    if !parsed.isEmpty {
+                        print("📝 Current user posts: \(parsed.map { $0.id ?? "no-id" }.joined(separator: ", "))")
                     }
                 }
             }
@@ -285,16 +296,28 @@ class PostManager: ObservableObject {
             }
     }
     
+    // MARK: - Optimistic Delete (instant UI update)
+    func optimisticDeletePost(_ postId: String) {
+        print("⚡ Optimistically removing post from UI: \(postId)")
+        userPosts.removeAll { $0.id == postId }
+        allPosts.removeAll { $0.id == postId }
+        print("✅ Post removed from local arrays. Remaining user posts: \(userPosts.count)")
+    }
+    
     // MARK: - Delete Post
     func deletePost(_ postId: String) async throws {
         isLoading = true
         errorMessage = nil
         
+        print("🗑️ Deleting post from Firestore: \(postId)")
+        
         do {
             try await db.collection("posts").document(postId).delete()
-            print("✅ Post deleted successfully")
+            print("✅ Post deleted successfully from Firestore: \(postId)")
+            print("📡 Real-time listeners will automatically update the UI")
             isLoading = false
         } catch {
+            print("❌ Failed to delete post: \(error.localizedDescription)")
             errorMessage = error.localizedDescription
             isLoading = false
             throw error
