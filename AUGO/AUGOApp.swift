@@ -1,8 +1,10 @@
 // AUGOApp.swift
 import SwiftUI
 import FirebaseCore
-import FirebaseMessaging
 import UserNotifications
+#if canImport(FirebaseMessaging)
+import FirebaseMessaging
+#endif
 
 // MARK: - AppDelegate for Remote Notifications
 class AppDelegate: NSObject, UIApplicationDelegate {
@@ -14,9 +16,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // Configure Firebase
         FirebaseApp.configure()
         
-        // Setup Firebase Messaging
-        Messaging.messaging().delegate = NotificationManager.shared
-        
         // Setup notification center
         UNUserNotificationCenter.current().delegate = NotificationManager.shared
         
@@ -27,7 +26,11 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         print("📱 Device token received")
+        #if canImport(FirebaseMessaging)
         Messaging.messaging().apnsToken = deviceToken
+        #else
+        // FirebaseMessaging not available; skip assigning APNS token
+        #endif
     }
     
     func application(_ application: UIApplication,
@@ -79,3 +82,4 @@ struct AUGOApp: App {
         }
     }
 }
+

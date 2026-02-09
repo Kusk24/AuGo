@@ -247,22 +247,30 @@ struct UserInfoFormView: View {
             return
         }
         
+        guard let uid = authManager.user?.uid else {
+            errorMessage = "User ID not found"
+            showError = true
+            return
+        }
+        
         let profile = User(
+            id: uid,
             studentID: studentID,
             name: realName,
             nickname: nickname,
             email: email,
             faculty: selectedMajor,
             birthDate: birthDate,
+            joinedDate: Date(),
+            lastWarningDate: nil,
             warningCount: 0,
             status: .active,
-            joinedDate: Date()
+            score: 0
         )
         
         Task {
             do {
-                try await authManager.saveUserProfile(profile)
-                router.isLocked = false
+                try await authManager.createOrUpdateUserProfile(uid: uid, profile: profile)
             } catch {
                 errorMessage = "Failed to save profile: \(error.localizedDescription)"
                 showError = true

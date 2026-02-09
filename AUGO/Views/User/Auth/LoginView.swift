@@ -4,7 +4,6 @@ import SwiftUI
 struct LoginView: View {
     @EnvironmentObject var router: AppRouter
     @EnvironmentObject var authManager: AuthenticationManager
-    @State private var showInfoForm = false
     
     var body: some View {
         NavigationStack {
@@ -36,10 +35,6 @@ struct LoginView: View {
                     Button {
                         Task {
                             await authManager.signInWithGoogle()
-                            // Only navigate if authentication succeeded AND no errors
-                            if authManager.isAuthenticated && authManager.errorMessage == nil {
-                                showInfoForm = true
-                            }
                         }
                     } label: {
                         HStack(spacing: 12) {
@@ -84,9 +79,6 @@ struct LoginView: View {
                         .frame(height: 60)
                 }
                 .padding()
-            }
-            .navigationDestination(isPresented: $showInfoForm) {
-                UserInfoFormView()
             }
         }
     }

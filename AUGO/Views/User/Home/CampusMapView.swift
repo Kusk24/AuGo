@@ -182,9 +182,6 @@ struct CampusMapView: View {
         } label: {
             notificationIcon
         }
-        .sheet(isPresented: $showNotificationList) {
-            NotificationListView()
-        }
     }
     
     private var notificationIcon: some View {

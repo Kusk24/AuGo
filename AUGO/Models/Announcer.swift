@@ -4,19 +4,24 @@ import FirebaseFirestore
 
 struct Announcer: Codable, Identifiable {
     @DocumentID var id: String?
+    
     let name: String
     let email: String
-    let faculty: String
-    let organization: String
-    let role: AnnouncerRole
-    var status: AnnouncerStatus
-    let createdAt: Date
+    let phone: String
     
-    enum AnnouncerRole: String, Codable {
-        case admin
-        case facultyStaff
+    let affiliationName: String
+    let affiliationType: AffiliationType
+    
+    let role: String          // keep as String unless you control values
+    let status: AnnouncerStatus
+    
+    let totalAnnouncements: Int
+    let joinedDate: Date
+    
+    enum AffiliationType: String, Codable {
+        case faculty
         case studentOrganization
-        case moderator
+        case other
     }
     
     enum AnnouncerStatus: String, Codable {
@@ -25,14 +30,16 @@ struct Announcer: Codable, Identifiable {
         case suspended
     }
     
-    init(id: String? = nil, name: String, email: String, faculty: String, organization: String, role: AnnouncerRole, status: AnnouncerStatus = .active, createdAt: Date = Date()) {
-        self.id = id
-        self.name = name
-        self.email = email
-        self.faculty = faculty
-        self.organization = organization
-        self.role = role
-        self.status = status
-        self.createdAt = createdAt
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case email
+        case phone
+        case role
+        case status
+        case totalAnnouncements = "total_announcements"
+        case joinedDate = "joined_date"
+        case affiliationName = "affiliation_name"
+        case affiliationType = "affiliation_type"
     }
 }

@@ -7,15 +7,23 @@ import GoogleSignIn
 import UIKit
 import FirebaseCore
 
+enum AccountRole {
+    case user
+    case announcer
+    case unknown
+}
+
 @MainActor
 class AuthenticationManager: ObservableObject {
     @Published var user: FirebaseAuth.User?
     @Published var userProfile: User?
+    @Published var announcerProfile: Announcer?
+    @Published var role: AccountRole = .unknown
     @Published var isAuthenticated = false
     @Published var isProfileComplete = false
     @Published var errorMessage: String?
     @Published var isLoading = false
-    @Published var isCheckingAuth = true // NEW: for initial auth check
+    @Published var isCheckingAuth = true
     
     private let auth = Auth.auth()
     private let db = Firestore.firestore()
@@ -30,12 +38,13 @@ class AuthenticationManager: ObservableObject {
         if let currentUser = auth.currentUser {
             self.user = currentUser
             self.isAuthenticated = true
-            // Check if profile is complete
-            fetchUserProfile(uid: currentUser.uid)
+            // Determine role and fetch profile
+            detectRoleAndFetchProfile(uid: currentUser.uid)
         } else {
             self.isAuthenticated = false
             self.isProfileComplete = false
-            self.isCheckingAuth = false // Done checking, no user
+            self.role = .unknown
+            self.isCheckingAuth = false
         }
     }
     
@@ -118,8 +127,8 @@ class AuthenticationManager: ObservableObject {
             self.user = authResult.user
             self.isAuthenticated = true
             
-            // Check if profile exists
-            fetchUserProfile(uid: authResult.user.uid)
+            // Detect role and fetch profile
+            detectRoleAndFetchProfile(uid: authResult.user.uid)
             
             // Register device for push notifications
             await notificationManager.registerDeviceForNotifications(userId: authResult.user.uid)
@@ -132,6 +141,33 @@ class AuthenticationManager: ObservableObject {
         isLoading = false
     }
     
+    // MARK: - Detect Role and Fetch Profile
+    func detectRoleAndFetchProfile(uid: String) {
+        // Try announcer first
+        db.collection("announcers").document(uid).getDocument { [weak self] snapshot, error in
+            guard let self = self else { return }
+            
+            Task { @MainActor in
+                if let data = snapshot?.data() {
+                    // It's an announcer
+                    do {
+                        let announcer = try snapshot!.data(as: Announcer.self)
+                        self.announcerProfile = announcer
+                        self.role = .announcer
+                        self.isProfileComplete = true
+                        self.isCheckingAuth = false
+                    } catch {
+                        print("Error decoding announcer: \(error)")
+                        self.isCheckingAuth = false
+                    }
+                } else {
+                    // Not an announcer, try user
+                    self.fetchUserProfile(uid: uid)
+                }
+            }
+        }
+    }
+    
     // MARK: - Fetch User Profile
     func fetchUserProfile(uid: String) {
         db.collection("users").document(uid).getDocument { [weak self] snapshot, error in
@@ -141,47 +177,38 @@ class AuthenticationManager: ObservableObject {
                 if let error = error {
                     print("Error fetching profile: \(error)")
                     self.isProfileComplete = false
+                    self.role = .unknown
                     self.isCheckingAuth = false
                     return
                 }
                 
-                if let data = snapshot?.data() {
-                    // Manually decode to handle @DocumentID
-                    let profile = User(
-                        id: uid,
-                        studentID: data["studentID"] as? String ?? "",
-                        name: data["name"] as? String ?? "",
-                        nickname: data["nickname"] as? String ?? "",
-                        email: data["email"] as? String ?? "",
-                        faculty: data["faculty"] as? String ?? "",
-                        birthDate: (data["birthDate"] as? Timestamp)?.dateValue() ?? Date(),
-                        warningCount: data["warningCount"] as? Int ?? 0,
-                        status: User.UserStatus(rawValue: data["status"] as? String ?? "active") ?? .active,
-                        joinedDate: (data["joinedDate"] as? Timestamp)?.dateValue() ?? Date(),
-                        score: data["score"] as? Int ?? 0,
-                        fcmToken: data["fcmToken"] as? String
-                    )
-                    self.userProfile = profile
-                    self.isProfileComplete = true
-                    self.isCheckingAuth = false
+                if let _ = snapshot?.data() {
+                    do {
+                        let profile = try snapshot!.data(as: User.self)
+                        self.userProfile = profile
+                        self.role = .user
+                        self.isProfileComplete = true
+                        self.isCheckingAuth = false
+                    } catch {
+                        print("Error decoding user: \(error)")
+                        self.isProfileComplete = false
+                        self.role = .unknown
+                        self.isCheckingAuth = false
+                    }
                 } else {
                     self.isProfileComplete = false
+                    self.role = .user  // Default to user for profile creation
                     self.isCheckingAuth = false
                 }
             }
         }
     }
     
-    // MARK: - Save User Profile
-    func saveUserProfile(_ profile: User) async throws {
-        guard let uid = user?.uid else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No user logged in"])
-        }
-        
+    // MARK: - Create or Update User Profile
+    func createOrUpdateUserProfile(uid: String, profile: User) async throws {
         isLoading = true
-        
+        errorMessage = nil
         do {
-            // Create dictionary manually to avoid @DocumentID encoding issues
             let data: [String: Any] = [
                 "studentID": profile.studentID,
                 "name": profile.name,
@@ -194,32 +221,22 @@ class AuthenticationManager: ObservableObject {
                 "joinedDate": profile.joinedDate,
                 "score": profile.score
             ]
-            
-            try await db.collection("users").document(uid).setData(data)
-            
+            try await db.collection("users").document(uid).setData(data, merge: true)
             var profileWithId = profile
             profileWithId.id = uid
             self.userProfile = profileWithId
+            self.role = .user
             self.isProfileComplete = true
-            
         } catch {
-            errorMessage = error.localizedDescription
+            self.errorMessage = error.localizedDescription
             throw error
         }
-        
         isLoading = false
     }
     
     // MARK: - Sign Out
     func signOut() {
         do {
-            // Delete FCM token before signing out
-            if let userId = user?.uid {
-                Task {
-                    await notificationManager.deleteToken(userId: userId)
-                }
-            }
-            
             try auth.signOut()
             GIDSignIn.sharedInstance.signOut()
             self.user = nil
