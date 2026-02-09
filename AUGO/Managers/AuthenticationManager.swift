@@ -19,6 +19,7 @@ class AuthenticationManager: ObservableObject {
     
     private let auth = Auth.auth()
     private let db = Firestore.firestore()
+    private let notificationManager = NotificationManager.shared
     
     init() {
         // Check if user is already signed in
@@ -120,6 +121,9 @@ class AuthenticationManager: ObservableObject {
             // Check if profile exists
             fetchUserProfile(uid: authResult.user.uid)
             
+            // Register device for push notifications
+            await notificationManager.registerDeviceForNotifications(userId: authResult.user.uid)
+            
         } catch {
             errorMessage = "Sign in failed: \(error.localizedDescription)"
             print("Google Sign-In Error: \(error)")
@@ -154,7 +158,8 @@ class AuthenticationManager: ObservableObject {
                         warningCount: data["warningCount"] as? Int ?? 0,
                         status: User.UserStatus(rawValue: data["status"] as? String ?? "active") ?? .active,
                         joinedDate: (data["joinedDate"] as? Timestamp)?.dateValue() ?? Date(),
-                        score: data["score"] as? Int ?? 0
+                        score: data["score"] as? Int ?? 0,
+                        fcmToken: data["fcmToken"] as? String
                     )
                     self.userProfile = profile
                     self.isProfileComplete = true
@@ -208,6 +213,13 @@ class AuthenticationManager: ObservableObject {
     // MARK: - Sign Out
     func signOut() {
         do {
+            // Delete FCM token before signing out
+            if let userId = user?.uid {
+                Task {
+                    await notificationManager.deleteToken(userId: userId)
+                }
+            }
+            
             try auth.signOut()
             GIDSignIn.sharedInstance.signOut()
             self.user = nil

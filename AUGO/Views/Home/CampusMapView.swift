@@ -29,6 +29,7 @@ struct CampusMapView: View {
     @State private var selectedPost: CampusPost?
     @State private var showSuccessAlert = false
     @State private var alertMessage = ""
+    @State private var showNotificationList = false
     // MARK: - FILTER
     @State private var selectedCategories: Set<Post.PostCategory> = Set(Post.PostCategory.allCases)
     @State private var displayClusters: [PostCluster] = []
@@ -177,10 +178,12 @@ struct CampusMapView: View {
     
     private var notificationButton: some View {
         Button {
-            announcementCenter.markAllAsRead()
-            showAnnouncement = true
+            showNotificationList = true
         } label: {
             notificationIcon
+        }
+        .sheet(isPresented: $showNotificationList) {
+            NotificationListView()
         }
     }
     

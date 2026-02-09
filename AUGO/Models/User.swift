@@ -14,6 +14,7 @@ struct User: Codable, Identifiable {
     var status: UserStatus
     let joinedDate: Date
     var score: Int // NEW: user's total score/points
+    var fcmToken: String? // FCM token for push notifications
     
     enum UserStatus: String, Codable {
         case active
@@ -21,7 +22,7 @@ struct User: Codable, Identifiable {
         case banned
     }
     
-    init(id: String? = nil, studentID: String, name: String, nickname: String, email: String, faculty: String, birthDate: Date, warningCount: Int = 0, status: UserStatus = .active, joinedDate: Date = Date(), score: Int = 0) {
+    init(id: String? = nil, studentID: String, name: String, nickname: String, email: String, faculty: String, birthDate: Date, warningCount: Int = 0, status: UserStatus = .active, joinedDate: Date = Date(), score: Int = 0, fcmToken: String? = nil) {
         self.id = id
         self.studentID = studentID
         self.name = name
@@ -33,5 +34,6 @@ struct User: Codable, Identifiable {
         self.status = status
         self.joinedDate = joinedDate
         self.score = score
+        self.fcmToken = fcmToken
     }
 }
