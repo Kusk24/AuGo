@@ -200,7 +200,7 @@ struct ProfileView: View {
         } message: {
             Text("Are you sure you want to delete this post?")
         }
-        .onChange(of: authManager.user?.uid) { newUserId in
+        .onChange(of: authManager.user?.uid) { _, newUserId in
             // Re-setup listener if user changes
             if let userId = newUserId {
                 print("👤 User changed, re-setting up listener: \(userId)")

@@ -35,14 +35,12 @@ class NotificationManager: NSObject, ObservableObject {
             let granted = try await UNUserNotificationCenter.current()
                 .requestAuthorization(options: [.alert, .badge, .sound])
             
-            await MainActor.run {
-                self.notificationPermissionGranted = granted
-            }
+            self.notificationPermissionGranted = granted
             
             if granted {
                 print("✅ Notification permission granted")
                 // Register for remote notifications on main thread
-                await UIApplication.shared.registerForRemoteNotifications()
+                UIApplication.shared.registerForRemoteNotifications()
             } else {
                 print("❌ Notification permission denied")
             }
@@ -83,15 +81,23 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         let userInfo = notification.request.content.userInfo
         print("📬 Notification received in foreground: \(userInfo)")
         
-        // Create notification object
-        let pushNotification = PushNotification(
-            id: notification.request.identifier,
-            title: notification.request.content.title,
-            body: notification.request.content.body,
-            data: userInfo
-        )
+        let id = notification.request.identifier
+        let title = notification.request.content.title
+        let body = notification.request.content.body
+        let sanitizedPayload: [String: String] = userInfo.reduce(into: [:]) { result, item in
+            result[String(describing: item.key)] = String(describing: item.value)
+        }
         
         Task { @MainActor in
+            let payload: [AnyHashable: Any] = sanitizedPayload.reduce(into: [:]) { result, item in
+                result[item.key] = item.value
+            }
+            let pushNotification = PushNotification(
+                id: id,
+                title: title,
+                body: body,
+                data: payload
+            )
             self.receivedNotifications.insert(pushNotification, at: 0)
         }
         
@@ -108,15 +114,23 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         let userInfo = response.notification.request.content.userInfo
         print("👆 Notification tapped: \(userInfo)")
         
-        // Create notification object
-        let pushNotification = PushNotification(
-            id: response.notification.request.identifier,
-            title: response.notification.request.content.title,
-            body: response.notification.request.content.body,
-            data: userInfo
-        )
+        let id = response.notification.request.identifier
+        let title = response.notification.request.content.title
+        let body = response.notification.request.content.body
+        let sanitizedPayload: [String: String] = userInfo.reduce(into: [:]) { result, item in
+            result[String(describing: item.key)] = String(describing: item.value)
+        }
         
         Task { @MainActor in
+            let payload: [AnyHashable: Any] = sanitizedPayload.reduce(into: [:]) { result, item in
+                result[item.key] = item.value
+            }
+            let pushNotification = PushNotification(
+                id: id,
+                title: title,
+                body: body,
+                data: payload
+            )
             self.handleNotificationTap(pushNotification)
         }
         

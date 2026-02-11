@@ -1,6 +1,7 @@
 import SwiftUI
-internal import MapKit
 import FirebaseAuth
+import CoreLocation
+import UIKit
 
 struct PostDetailCardView: View {
     let post: CampusPost
@@ -271,10 +272,7 @@ struct PostDetailCardView: View {
                     // Action buttons
                     VStack(spacing: 12) {
                         Button(action: {
-                            // Open in Apple Maps
-                            let mapItem = MKMapItem(placemark: MKPlacemark(coordinate: post.coordinate))
-                            mapItem.name = post.message
-                            mapItem.openInMaps(launchOptions: nil)
+                            openInMaps()
                         }) {
                             HStack {
                                 Image(systemName: "map.fill")
@@ -353,5 +351,17 @@ struct PostDetailCardView: View {
             // Silently handle permission errors - security rules may not be set yet
             // User will still see buttons, just won't see saved reaction state initially
         }
+    }
+    
+    private func openInMaps() {
+        let latitude = post.coordinate.latitude
+        let longitude = post.coordinate.longitude
+        let query = post.message.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "Pinned%20Location"
+        
+        guard let mapsURL = URL(string: "http://maps.apple.com/?ll=\(latitude),\(longitude)&q=\(query)") else {
+            return
+        }
+        
+        UIApplication.shared.open(mapsURL)
     }
 }

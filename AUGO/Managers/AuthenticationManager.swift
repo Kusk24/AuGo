@@ -50,6 +50,112 @@ class AuthenticationManager: ObservableObject {
     
     // MARK: - Google Sign In
     func signInWithGoogle() async {
+        await signInWithGoogle(requiredRole: nil)
+    }
+    
+    func signInAnnouncerWithEmailPassword(email: String, password: String) async {
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let trimmedPassword = password.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        guard !normalizedEmail.isEmpty, !trimmedPassword.isEmpty else {
+            errorMessage = "Please enter announcer email and password."
+            return
+        }
+        
+        isLoading = true
+        errorMessage = nil
+        
+        do {
+            let authResult = try await auth.signIn(withEmail: normalizedEmail, password: trimmedPassword)
+            let announcerProfile = try await fetchAnnouncerProfile(
+                uid: authResult.user.uid,
+                email: normalizedEmail
+            )
+            
+            guard let announcerProfile else {
+                do {
+                    try auth.signOut()
+                } catch {
+                    print("Sign out failed after announcer email/password check: \(error)")
+                }
+                self.user = nil
+                self.isAuthenticated = false
+                self.role = .unknown
+                self.isProfileComplete = false
+                self.errorMessage = "This account is not registered as an announcer."
+                isLoading = false
+                return
+            }
+            
+            self.user = authResult.user
+            self.announcerProfile = announcerProfile
+            self.role = .announcer
+            self.isAuthenticated = true
+            self.isProfileComplete = true
+            self.isCheckingAuth = false
+            
+            await notificationManager.registerDeviceForNotifications(userId: authResult.user.uid)
+        } catch {
+            if let firestoreErrorCode = FirestoreErrorCode.Code(rawValue: (error as NSError).code),
+               firestoreErrorCode == .permissionDenied {
+                errorMessage = "Login succeeded, but Firestore rules blocked announcer profile access."
+                print("Announcer profile access blocked by Firestore rules: \(error)")
+                isLoading = false
+                return
+            }
+            
+            if let errorCode = AuthErrorCode(rawValue: (error as NSError).code) {
+                switch errorCode {
+                case .wrongPassword, .invalidCredential, .userNotFound:
+                    errorMessage = "Invalid announcer email or password."
+                default:
+                    errorMessage = "Sign in failed: \(error.localizedDescription)"
+                }
+            } else {
+                errorMessage = "Sign in failed: \(error.localizedDescription)"
+            }
+            print("Announcer email/password sign-in error: \(error)")
+        }
+        
+        isLoading = false
+    }
+    
+    func sendAnnouncerPasswordReset(email: String) async -> Bool {
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        
+        guard !normalizedEmail.isEmpty else {
+            errorMessage = "Please enter announcer email."
+            return false
+        }
+        
+        isLoading = true
+        errorMessage = nil
+        
+        do {
+            let isAnnouncer = try await db.collection("announcers")
+                .whereField("email", isEqualTo: normalizedEmail)
+                .limit(to: 1)
+                .getDocuments()
+                .documents
+                .isEmpty == false
+            
+            guard isAnnouncer else {
+                errorMessage = "No announcer account found for this email."
+                isLoading = false
+                return false
+            }
+            
+            try await auth.sendPasswordReset(withEmail: normalizedEmail)
+            isLoading = false
+            return true
+        } catch {
+            errorMessage = "Password reset failed: \(error.localizedDescription)"
+            isLoading = false
+            return false
+        }
+    }
+    
+    private func signInWithGoogle(requiredRole: AccountRole?) async {
         isLoading = true
         errorMessage = nil
         
@@ -63,10 +169,16 @@ class AuthenticationManager: ObservableObject {
         // Add hosted domain restriction (only allow @au.edu emails)
         // Note: This shows a hint to users but doesn't enforce on client side
         // You MUST also validate on the server/Firebase side
-        await performGoogleSignIn(hostedDomain: "au.edu")
+        await performGoogleSignIn(
+            hostedDomain: "au.edu",
+            requiredRole: requiredRole
+        )
     }
     
-    private func performGoogleSignIn(hostedDomain: String? = nil) async {
+    private func performGoogleSignIn(
+        hostedDomain: String? = nil,
+        requiredRole: AccountRole? = nil
+    ) async {
         
         // Get root view controller (compatible with multi-scene apps)
         let presentingViewController: UIViewController? = {
@@ -122,13 +234,41 @@ class AuthenticationManager: ObservableObject {
                 accessToken: accessToken
             )
             
-            // Sign in to Firebase ONLY if domain validation passed
             let authResult = try await auth.signIn(with: credential)
+            
+            if requiredRole == .announcer {
+                let announcerProfile = try await fetchAnnouncerProfile(
+                    uid: authResult.user.uid,
+                    email: authResult.user.email?.lowercased()
+                )
+                
+                if announcerProfile == nil {
+                    do {
+                        try auth.signOut()
+                    } catch {
+                        print("Sign out failed after announcer check: \(error)")
+                    }
+                    GIDSignIn.sharedInstance.signOut()
+                    self.user = nil
+                    self.isAuthenticated = false
+                    self.role = .unknown
+                    self.isProfileComplete = false
+                    self.errorMessage = "This Google account is not registered as an announcer."
+                    isLoading = false
+                    return
+                }
+            }
+            
             self.user = authResult.user
             self.isAuthenticated = true
             
-            // Detect role and fetch profile
-            detectRoleAndFetchProfile(uid: authResult.user.uid)
+            if requiredRole == .announcer {
+                // Explicit announcer sign-in path
+                detectRoleAndFetchProfile(uid: authResult.user.uid)
+            } else {
+                // Student Google SSO should always route through the user flow
+                fetchUserProfile(uid: authResult.user.uid)
+            }
             
             // Register device for push notifications
             await notificationManager.registerDeviceForNotifications(userId: authResult.user.uid)
@@ -143,28 +283,64 @@ class AuthenticationManager: ObservableObject {
     
     // MARK: - Detect Role and Fetch Profile
     func detectRoleAndFetchProfile(uid: String) {
-        // Try announcer first
-        db.collection("announcers").document(uid).getDocument { [weak self] snapshot, error in
-            guard let self = self else { return }
-            
-            Task { @MainActor in
-                if let data = snapshot?.data() {
-                    // It's an announcer
-                    do {
-                        let announcer = try snapshot!.data(as: Announcer.self)
-                        self.announcerProfile = announcer
-                        self.role = .announcer
-                        self.isProfileComplete = true
-                        self.isCheckingAuth = false
-                    } catch {
-                        print("Error decoding announcer: \(error)")
-                        self.isCheckingAuth = false
-                    }
+        let providerIDs = auth.currentUser?.providerData.map(\.providerID) ?? []
+        if providerIDs.contains("google.com") {
+            // Keep student Google users out of announcer-only reads
+            fetchUserProfile(uid: uid)
+            return
+        }
+        
+        Task {
+            do {
+                let announcerProfile = try await fetchAnnouncerProfile(
+                    uid: uid,
+                    email: auth.currentUser?.email?.lowercased()
+                )
+                
+                if let announcerProfile {
+                    self.announcerProfile = announcerProfile
+                    self.role = .announcer
+                    self.isProfileComplete = true
+                    self.isCheckingAuth = false
                 } else {
                     // Not an announcer, try user
                     self.fetchUserProfile(uid: uid)
                 }
+            } catch {
+                print("Error fetching announcer profile: \(error)")
+                self.fetchUserProfile(uid: uid)
             }
+        }
+    }
+    
+    private func fetchAnnouncerProfile(uid: String, email: String?) async throws -> Announcer? {
+        var lastError: Error?
+        
+        do {
+            let announcerByUID = try await db.collection("announcers").document(uid).getDocument()
+            if announcerByUID.exists {
+                return try announcerByUID.data(as: Announcer.self)
+            }
+        } catch {
+            lastError = error
+        }
+        
+        guard let email, !email.isEmpty else {
+            if let lastError { throw lastError }
+            return nil
+        }
+        
+        do {
+            let querySnapshot = try await db.collection("announcers")
+                .whereField("email", isEqualTo: email)
+                .limit(to: 1)
+                .getDocuments()
+            
+            guard let firstDoc = querySnapshot.documents.first else { return nil }
+            return try firstDoc.data(as: Announcer.self)
+        } catch {
+            if let lastError { throw lastError }
+            throw error
         }
     }
     
@@ -183,16 +359,15 @@ class AuthenticationManager: ObservableObject {
                 }
                 
                 if let _ = snapshot?.data() {
-                    do {
-                        let profile = try snapshot!.data(as: User.self)
+                    if let profile = self.mapUserProfile(snapshot: snapshot!) {
                         self.userProfile = profile
                         self.role = .user
                         self.isProfileComplete = true
                         self.isCheckingAuth = false
-                    } catch {
-                        print("Error decoding user: \(error)")
+                    } else {
+                        print("Error decoding user profile. Falling back to incomplete profile flow.")
                         self.isProfileComplete = false
-                        self.role = .unknown
+                        self.role = .user
                         self.isCheckingAuth = false
                     }
                 } else {
@@ -201,6 +376,55 @@ class AuthenticationManager: ObservableObject {
                     self.isCheckingAuth = false
                 }
             }
+        }
+    }
+    
+    private func mapUserProfile(snapshot: DocumentSnapshot) -> User? {
+        guard let data = snapshot.data() else { return nil }
+        
+        let birthDate = parseFirestoreDate(data["birthDate"]) ?? Date()
+        let joinedDate = parseFirestoreDate(data["joinedDate"]) ?? Date()
+        let lastWarningDate = parseFirestoreDate(data["lastWarningDate"])
+        
+        let statusRaw = (data["status"] as? String) ?? "active"
+        let status = User.UserStatus(rawValue: statusRaw) ?? .active
+        
+        return User(
+            id: snapshot.documentID,
+            studentID: (data["studentID"] as? String) ?? "",
+            name: (data["name"] as? String) ?? "",
+            nickname: (data["nickname"] as? String) ?? "",
+            email: (data["email"] as? String) ?? "",
+            faculty: (data["faculty"] as? String) ?? "",
+            birthDate: birthDate,
+            joinedDate: joinedDate,
+            lastWarningDate: lastWarningDate,
+            warningCount: (data["warningCount"] as? Int) ?? 0,
+            status: status,
+            score: (data["score"] as? Int) ?? 0
+        )
+    }
+    
+    private func parseFirestoreDate(_ value: Any?) -> Date? {
+        switch value {
+        case let timestamp as Timestamp:
+            return timestamp.dateValue()
+        case let date as Date:
+            return date
+        case let seconds as TimeInterval:
+            return Date(timeIntervalSince1970: seconds)
+        case let seconds as Int:
+            return Date(timeIntervalSince1970: TimeInterval(seconds))
+        case let dateString as String:
+            let isoWithFraction = ISO8601DateFormatter()
+            isoWithFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = isoWithFraction.date(from: dateString) { return date }
+            
+            let iso = ISO8601DateFormatter()
+            if let date = iso.date(from: dateString) { return date }
+            return nil
+        default:
+            return nil
         }
     }
     

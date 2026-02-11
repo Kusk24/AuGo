@@ -178,6 +178,7 @@
 		0A48E4712ECCE957001A4908 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				C576E4632F3A6C980057A27C /* Auth */,
 				C576E4752F3A6C980057A27C /* User */,
 				C576E4542F3A6C910057A27C /* Announcer */,
 			);
@@ -326,7 +327,6 @@
 			isa = PBXGroup;
 			children = (
 				C576E4602F3A6C980057A27C /* ARCamera */,
-				C576E4632F3A6C980057A27C /* Auth */,
 				C576E46F2F3A6C980057A27C /* Home */,
 				C576E4712F3A6C980057A27C /* Leaderboard */,
 				C576E4732F3A6C980057A27C /* Profile */,
