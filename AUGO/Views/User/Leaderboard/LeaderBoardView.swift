@@ -142,49 +142,63 @@ struct LeaderboardView: View {
                     
                     print("✅ Fetched \(documents.count) documents from Firestore")
                     
-                    let fetchedLeaders = documents.enumerated().compactMap { index, document -> Leader? in
+                    let parsedUsers: [User] = documents.compactMap { document -> User? in
                         let data = document.data()
-                        
-                        // Filter out non-active users
-                        let status = data["status"] as? String ?? "active"
-                        guard status == "active" else {
-                            print("⚠️ Skipping non-active user: \(document.documentID)")
-                            return nil
-                        }
-                        
-                        guard let studentID = data["studentID"] as? String,
-                              let name = data["name"] as? String,
-                              let nickname = data["nickname"] as? String,
-                              let email = data["email"] as? String,
-                              let faculty = data["faculty"] as? String else {
-                            print("⚠️ Missing fields for document: \(document.documentID)")
-                            return nil
-                        }
+
+                        // Be tolerant with legacy/incomplete user docs so leaderboard still renders.
+                        let email = (data["email"] as? String) ?? ""
+                        let fallbackName = email.split(separator: "@").first.map(String.init) ?? "User"
+                        let name = (data["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let nickname = (data["nickname"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let resolvedName = (name?.isEmpty == false) ? name! : fallbackName
+                        let resolvedNickname = (nickname?.isEmpty == false) ? nickname! : resolvedName
+                        let statusRaw = (data["status"] as? String) ?? "active"
                         
                         let user = User(
                             id: document.documentID,
-                            studentID: studentID,
-                            name: name,
-                            nickname: nickname,
+                            studentID: (data["studentID"] as? String) ?? "",
+                            name: resolvedName,
+                            nickname: resolvedNickname,
                             email: email,
-                            faculty: faculty,
+                            faculty: (data["faculty"] as? String) ?? "Unknown",
                             birthDate: (data["birthDate"] as? Timestamp)?.dateValue() ?? Date(),
                             joinedDate: (data["joinedDate"] as? Timestamp)?.dateValue() ?? Date(),
                             lastWarningDate: (data["lastWarningDate"] as? Timestamp)?.dateValue(),
                             warningCount: data["warningCount"] as? Int ?? 0,
-                            status: User.UserStatus(rawValue: status) ?? .active,
-                            score: data["score"] as? Int ?? 0
+                            status: User.UserStatus(rawValue: statusRaw) ?? .active,
+                            score: Self.parseScore(data["score"])
                         )
-                        
-                        print("✅ Parsed user: \(nickname) with score: \(user.score)")
-                        return Leader(user: user, rank: index + 1)
+
+                        print("✅ Parsed user: \(resolvedNickname) with score: \(user.score)")
+                        return user
                     }
+
+                    // Keep ranking contiguous and deterministic, highest score first.
+                    let fetchedLeaders = parsedUsers
+                        .sorted { $0.score > $1.score }
+                        .enumerated()
+                        .map { Leader(user: $0.element, rank: $0.offset + 1) }
                     
                     print("✅ Total leaders created: \(fetchedLeaders.count)")
                     self.leaders = fetchedLeaders
                     self.isLoading = false
                 }
             }
+    }
+
+    private static func parseScore(_ value: Any?) -> Int {
+        switch value {
+        case let intValue as Int:
+            return intValue
+        case let number as NSNumber:
+            return number.intValue
+        case let doubleValue as Double:
+            return Int(doubleValue)
+        case let stringValue as String:
+            return Int(stringValue) ?? 0
+        default:
+            return 0
+        }
     }
 }
 

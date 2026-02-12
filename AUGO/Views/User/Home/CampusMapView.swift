@@ -1,6 +1,7 @@
 import SwiftUI
 internal import MapKit
 import FirebaseAuth
+import FirebaseFirestore
 
 struct CampusMapView: View {
     @Binding var showAnnouncement: Bool
@@ -22,10 +23,10 @@ struct CampusMapView: View {
     
     @State private var selectedPostID: UUID? = nil
     @State private var postMapping: [UUID: Post] = [:]
+    @State private var userDisplayNames: [String: String] = [:]
     
     @State private var showReportAlert = false
     @State private var postToReport: Post?    
-    @State private var showPostDetail = false
     @State private var selectedPost: CampusPost?
     @State private var showSuccessAlert = false
     @State private var alertMessage = ""
@@ -38,6 +39,14 @@ struct CampusMapView: View {
         let postsToUse = posts ?? postManager.allPosts
         let filtered = postsToUse.filter { selectedCategories.contains($0.category) }
         print("🎯 Filtering: \(postsToUse.count) total posts -> \(filtered.count) after category filter")
+        
+        let userIDs = Set(filtered.map(\.userId))
+        let knownUserIDs = Set(userDisplayNames.keys)
+        if !userIDs.isSubset(of: knownUserIDs) {
+            Task {
+                await ensureUserDisplayNames(for: filtered)
+            }
+        }
 
         let (clusters, mapping) = createClusters(from: filtered)
         print("📌 Created \(clusters.count) clusters from \(filtered.count) posts")
@@ -61,7 +70,7 @@ struct CampusMapView: View {
             let baseLoc = CLLocation(latitude: base.latitude, longitude: base.longitude)
             
             let campusPost = CampusPost(
-                author: base.userId,
+                author: displayName(for: base.userId),
                 message: base.content,
                 coordinate: base.coordinate,
                 category: convertCategory(base.category),
@@ -75,7 +84,7 @@ struct CampusMapView: View {
                 let loc = CLLocation(latitude: post.latitude, longitude: post.longitude)
                 if baseLoc.distance(from: loc) < radius {
                     let cp = CampusPost(
-                        author: post.userId,
+                        author: displayName(for: post.userId),
                         message: post.content,
                         coordinate: post.coordinate,
                         category: convertCategory(post.category),
@@ -93,6 +102,60 @@ struct CampusMapView: View {
 
         print("✅ Created \(result.count) clusters with total of \(newMapping.count) posts")
         return (result, newMapping)
+    }
+    
+    private func displayName(for userId: String) -> String {
+        if let displayName = userDisplayNames[userId], !displayName.isEmpty {
+            return displayName
+        }
+        return userId
+    }
+    
+    private func buildDisplayName(from data: [String: Any], fallbackId: String) -> String {
+        let name = (data["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let nickname = (data["nickname"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        
+        if !name.isEmpty && !nickname.isEmpty {
+            return "\(name) (\(nickname))"
+        }
+        if !name.isEmpty { return name }
+        if !nickname.isEmpty { return nickname }
+        return fallbackId
+    }
+    
+    private func ensureUserDisplayNames(for posts: [Post]) async {
+        let userIDs = Array(Set(posts.map(\.userId)))
+        let missingIDs = userIDs.filter { userDisplayNames[$0] == nil }
+        guard !missingIDs.isEmpty else { return }
+        
+        let db = Firestore.firestore()
+        var resolvedNames: [String: String] = [:]
+        
+        for chunk in missingIDs.chunked(into: 10) {
+            do {
+                let snapshot = try await db.collection("users")
+                    .whereField(FieldPath.documentID(), in: chunk)
+                    .getDocuments()
+                
+                for document in snapshot.documents {
+                    let data = document.data()
+                    resolvedNames[document.documentID] = buildDisplayName(from: data, fallbackId: document.documentID)
+                }
+            } catch {
+                print("❌ Failed loading user display names: \(error.localizedDescription)")
+            }
+        }
+        
+        for id in missingIDs where resolvedNames[id] == nil {
+            resolvedNames[id] = id
+        }
+        
+        guard !resolvedNames.isEmpty else { return }
+        
+        await MainActor.run {
+            userDisplayNames.merge(resolvedNames) { _, new in new }
+            updateClustersAndMapping(posts: posts)
+        }
     }
     
     // MARK: - Helper Methods
@@ -311,7 +374,6 @@ struct CampusMapView: View {
                     .onTapGesture {
                         print("📍 Tapped post: \(post.message)")
                         selectedPost = post
-                        showPostDetail = true
                     }
                 }
             } else {
@@ -453,56 +515,52 @@ struct CampusMapView: View {
             if let cluster = selectedCluster {
                 ClusterPostListView(posts: cluster.posts) { selectedPost in
                     self.selectedPost = selectedPost
-                    showPostDetail = true
                 }
             }
         }
-        .sheet(isPresented: $showPostDetail, onDismiss: {
+        .sheet(item: $selectedPost, onDismiss: {
             // Clear selected post when sheet is dismissed
-            selectedPost = nil
             selectedPostID = nil
-        }) {
-            if let post = selectedPost {
-                PostDetailCardView(
-                    post: post,
-                    firebasePost: postMapping[post.id],
-                    onReport: {
-                        print("🚨 Report button tapped")
-                        print("🔑 Looking for post ID: \(post.id)")
-                        print("🔑 Available mapping keys: \(postMapping.keys.map { $0.uuidString })")
-                        if let firebasePost = postMapping[post.id] {
-                            print("✅ showReportAlert set to true")
-                            print("🧾 postToReport: \(firebasePost.id ?? "nil")")
-                            postToReport = firebasePost
-                            showReportAlert = true
-                        } else {
-                            print("❌ No Firebase post found in mapping for post ID: \(post.id)")
-                        }
-                    },
-                    onLike: {
-                        guard let firebasePost = postMapping[post.id], 
-                              let postId = firebasePost.id,
-                              let userId = authManager.user?.uid else { return }
-                        Task {
-                            try? await postManager.likePost(postId, userId: userId)
-                        }
-                    },
-                    onDislike: {
-                        guard let firebasePost = postMapping[post.id], 
-                              let postId = firebasePost.id,
-                              let userId = authManager.user?.uid else { return }
-                        Task {
-                            try? await postManager.dislikePost(postId, userId: userId)
-                        }
+        }) { post in
+            PostDetailCardView(
+                post: post,
+                firebasePost: postMapping[post.id],
+                onReport: {
+                    print("🚨 Report button tapped")
+                    print("🔑 Looking for post ID: \(post.id)")
+                    print("🔑 Available mapping keys: \(postMapping.keys.map { $0.uuidString })")
+                    if let firebasePost = postMapping[post.id] {
+                        print("✅ showReportAlert set to true")
+                        print("🧾 postToReport: \(firebasePost.id ?? "nil")")
+                        postToReport = firebasePost
+                        showReportAlert = true
+                    } else {
+                        print("❌ No Firebase post found in mapping for post ID: \(post.id)")
                     }
-                )
-                .presentationDetents([PresentationDetent.medium, PresentationDetent.large])
-                .presentationDragIndicator(Visibility.visible)
-                .alert("Report Post", isPresented: $showReportAlert) {
-                    reportAlertButtons
-                } message: {
-                    Text("Why are you reporting this post?")
+                },
+                onLike: {
+                    guard let firebasePost = postMapping[post.id],
+                          let postId = firebasePost.id,
+                          let userId = authManager.user?.uid else { return }
+                    Task {
+                        try? await postManager.likePost(postId, userId: userId)
+                    }
+                },
+                onDislike: {
+                    guard let firebasePost = postMapping[post.id],
+                          let postId = firebasePost.id,
+                          let userId = authManager.user?.uid else { return }
+                    Task {
+                        try? await postManager.dislikePost(postId, userId: userId)
+                    }
                 }
+            )
+            .presentationDetents([PresentationDetent.medium, PresentationDetent.large])
+            .presentationDragIndicator(Visibility.visible)
+            .alert("Report Post", isPresented: $showReportAlert) {
+                reportAlertButtons
+            } message: {
+                Text("Why are you reporting this post?")
             }
         }
         .navigationDestination(isPresented: $isPresentingCreatePost) {
@@ -540,3 +598,17 @@ struct CampusMapView: View {
     }
 }
 
+private extension Array {
+    func chunked(into size: Int) -> [[Element]] {
+        guard size > 0 else { return [self] }
+        var chunks: [[Element]] = []
+        chunks.reserveCapacity((count + size - 1) / size)
+        var index = 0
+        while index < count {
+            let end = Swift.min(index + size, count)
+            chunks.append(Array(self[index..<end]))
+            index += size
+        }
+        return chunks
+    }
+}
