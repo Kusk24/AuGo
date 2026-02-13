@@ -18,6 +18,10 @@ struct User: Codable, Identifiable {
     var warningCount: Int
     var status: UserStatus
     var score: Int
+    var coinBalance: Int = 0
+    var dailyPostCount: Int = 0
+    var dailyPostCountDate: Date? = nil
+    var lastCoinGrantDate: Date? = nil
     
     enum UserStatus: String, Codable {
         case active

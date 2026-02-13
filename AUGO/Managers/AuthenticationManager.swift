@@ -401,7 +401,11 @@ class AuthenticationManager: ObservableObject {
             lastWarningDate: lastWarningDate,
             warningCount: (data["warningCount"] as? Int) ?? 0,
             status: status,
-            score: (data["score"] as? Int) ?? 0
+            score: (data["score"] as? Int) ?? 0,
+            coinBalance: (data["coinBalance"] as? Int) ?? 0,
+            dailyPostCount: (data["dailyPostCount"] as? Int) ?? 0,
+            dailyPostCountDate: parseFirestoreDate(data["dailyPostCountDate"]),
+            lastCoinGrantDate: parseFirestoreDate(data["lastCoinGrantDate"])
         )
     }
     
@@ -443,7 +447,9 @@ class AuthenticationManager: ObservableObject {
                 "warningCount": profile.warningCount,
                 "status": profile.status.rawValue,
                 "joinedDate": profile.joinedDate,
-                "score": profile.score
+                "score": profile.score,
+                "coinBalance": profile.coinBalance,
+                "dailyPostCount": profile.dailyPostCount
             ]
             try await db.collection("users").document(uid).setData(data, merge: true)
             var profileWithId = profile

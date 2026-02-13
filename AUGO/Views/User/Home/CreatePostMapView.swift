@@ -18,6 +18,18 @@ struct CreatePostMapView: View {
     @State private var isSubmitting = false
     @State private var showAlert = false
     @State private var alertMessage = ""
+    
+    private var coinBalance: Int {
+        postManager.userEconomy?.coinBalance ?? authManager.userProfile?.coinBalance ?? 0
+    }
+    
+    private var freePostsLeft: Int {
+        postManager.userEconomy?.freePostsLeft ?? 0
+    }
+    
+    private var freePostLimit: Int {
+        postManager.userEconomy?.dailyFreePostLimit ?? 0
+    }
 
     var body: some View {
         ZStack {
@@ -51,6 +63,30 @@ struct CreatePostMapView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .padding(.horizontal)
+                
+                HStack(spacing: 10) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "bitcoinsign.circle.fill")
+                            .foregroundColor(.orange)
+                        Text("Coins: \(coinBalance)")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.orange.opacity(0.12))
+                    .clipShape(Capsule())
+                    
+                    HStack(spacing: 6) {
+                        Image(systemName: "square.and.pencil")
+                            .foregroundColor(Color.Brand.primary)
+                        Text("Free posts left: \(freePostsLeft)/\(freePostLimit)")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.Brand.primary.opacity(0.12))
+                    .clipShape(Capsule())
+                }
 
                 Button {
                     Task {
@@ -78,6 +114,11 @@ struct CreatePostMapView: View {
         }
         .onAppear {
             cameraPosition = .region(mapViewModel.campusRegion)
+            if let userId = authManager.user?.uid {
+                Task {
+                    await postManager.refreshUserEconomy(userId: userId)
+                }
+            }
         }
         .navigationTitle("Choose Location")
         .navigationBarTitleDisplayMode(.inline)
@@ -113,7 +154,7 @@ struct CreatePostMapView: View {
             )
             
             print("✅ Post created with ID: \(postId) at location: \(coordinate.latitude), \(coordinate.longitude)")
-            alertMessage = "Post created successfully!"
+            alertMessage = postManager.lastPostCreationMessage ?? "Post created successfully!"
             showAlert = true
             isSubmitting = false
             

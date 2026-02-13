@@ -7,20 +7,60 @@ import CoreLocation
 
 @MainActor
 class PostManager: ObservableObject {
+    struct AdminConfiguration {
+        let dailyFreePostLimit: Int
+        let dailyFreeCoin: Int
+        let postVisibilityDurationHours: Int
+        
+        static let `default` = AdminConfiguration(
+            dailyFreePostLimit: 3,
+            dailyFreeCoin: 10,
+            postVisibilityDurationHours: 24
+        )
+    }
+    
+    struct UserEconomySnapshot {
+        let coinBalance: Int
+        let dailyPostsUsed: Int
+        let dailyFreePostLimit: Int
+        let freePostsLeft: Int
+        let dailyCoinReward: Int
+        let canClaimDailyCoin: Bool
+    }
+    
+    enum PostCreationError: LocalizedError {
+        case insufficientCoins(required: Int, balance: Int)
+        
+        var errorDescription: String? {
+            switch self {
+            case let .insufficientCoins(required, balance):
+                return "Not enough coins. Need \(required), current balance is \(balance)."
+            }
+        }
+    }
+    
     @Published var userPosts: [Post] = []
     @Published var allPosts: [Post] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var lastPostCreationMessage: String?
+    @Published var userEconomy: UserEconomySnapshot?
     
     private let db = Firestore.firestore()
     private var userPostsListener: ListenerRegistration?
     private var allPostsListener: ListenerRegistration?
+    private var adminConfigCache: AdminConfiguration = .default
+    private var lastAdminConfigFetch: Date?
     
     init() {
         // Start listening for all posts immediately when manager is created
         print("🚀 PostManager initialized - starting real-time listener")
         // Use fallback query by default (doesn't require compound index)
         fetchAllPostsSimple()
+        
+        Task { [weak self] in
+            await self?.bootstrapAdminConfiguration()
+        }
     }
     
     deinit {
@@ -28,37 +68,241 @@ class PostManager: ObservableObject {
         allPostsListener?.remove()
     }
     
+    private func bootstrapAdminConfiguration() async {
+        _ = await loadAdminConfiguration(forceRefresh: true)
+        fetchAllPostsSimple()
+    }
+    
+    private func loadAdminConfiguration(forceRefresh: Bool = false) async -> AdminConfiguration {
+        if !forceRefresh,
+           let lastFetch = lastAdminConfigFetch,
+           Date().timeIntervalSince(lastFetch) < 300 {
+            return adminConfigCache
+        }
+        
+        do {
+            let snapshot = try await db.collection("admin_configuration").document("default").getDocument()
+            guard let data = snapshot.data() else {
+                adminConfigCache = .default
+                lastAdminConfigFetch = Date()
+                return adminConfigCache
+            }
+            
+            adminConfigCache = AdminConfiguration(
+                dailyFreePostLimit: max(0, data["dailyFreePostLimit"] as? Int ?? AdminConfiguration.default.dailyFreePostLimit),
+                dailyFreeCoin: max(0, data["dailyFreeCoin"] as? Int ?? AdminConfiguration.default.dailyFreeCoin),
+                postVisibilityDurationHours: max(1, data["postVisibilityDuration"] as? Int ?? AdminConfiguration.default.postVisibilityDurationHours)
+            )
+            lastAdminConfigFetch = Date()
+            return adminConfigCache
+        } catch {
+            print("⚠️ Failed to load admin configuration. Using defaults: \(error.localizedDescription)")
+            adminConfigCache = .default
+            lastAdminConfigFetch = Date()
+            return adminConfigCache
+        }
+    }
+    
+    private func currentVisibilityCutoffDate() -> Date {
+        let hours = adminConfigCache.postVisibilityDurationHours
+        return Calendar.current.date(byAdding: .hour, value: -hours, to: Date()) ?? Date()
+    }
+    
+    private func startOfToday(_ date: Date = Date()) -> Date {
+        Calendar.current.startOfDay(for: date)
+    }
+    
+    private func isSameDay(_ lhs: Date?, _ rhs: Date) -> Bool {
+        guard let lhs else { return false }
+        return Calendar.current.isDate(lhs, inSameDayAs: rhs)
+    }
+    
+    private func normalizedDailyPostCount(rawCount: Int, rawDate: Date?, now: Date) -> Int {
+        isSameDay(rawDate, now) ? rawCount : 0
+    }
+    
+    func refreshUserEconomy(userId: String) async {
+        let config = await loadAdminConfiguration()
+        do {
+            let snapshot = try await db.collection("users").document(userId).getDocument()
+            let data = snapshot.data() ?? [:]
+            
+            let now = Date()
+            let coinBalance = data["coinBalance"] as? Int ?? 0
+            let rawDailyPostCount = data["dailyPostCount"] as? Int ?? 0
+            let dailyPostCountDate = (data["dailyPostCountDate"] as? Timestamp)?.dateValue()
+            let lastCoinGrantDate = (data["lastCoinGrantDate"] as? Timestamp)?.dateValue()
+            
+            let todayPostCount = normalizedDailyPostCount(
+                rawCount: rawDailyPostCount,
+                rawDate: dailyPostCountDate,
+                now: now
+            )
+            
+            let freePostsLeft = max(0, config.dailyFreePostLimit - todayPostCount)
+            let canClaimDailyCoin = !isSameDay(lastCoinGrantDate, now)
+            
+            userEconomy = UserEconomySnapshot(
+                coinBalance: coinBalance,
+                dailyPostsUsed: todayPostCount,
+                dailyFreePostLimit: config.dailyFreePostLimit,
+                freePostsLeft: freePostsLeft,
+                dailyCoinReward: config.dailyFreeCoin,
+                canClaimDailyCoin: canClaimDailyCoin
+            )
+        } catch {
+            print("❌ Failed to refresh user economy: \(error.localizedDescription)")
+        }
+    }
+    
+    @discardableResult
+    func claimDailyLoginCoin(userId: String) async throws -> String {
+        let config = await loadAdminConfiguration(forceRefresh: true)
+        let now = Date()
+        let startOfDay = startOfToday(now)
+        let userRef = db.collection("users").document(userId)
+        
+        let result = try await db.runTransaction { transaction, errorPointer in
+            let userSnapshot: DocumentSnapshot
+            do {
+                userSnapshot = try transaction.getDocument(userRef)
+            } catch {
+                errorPointer?.pointee = error as NSError
+                return nil
+            }
+            
+            let userData = userSnapshot.data() ?? [:]
+            let coinBalance = userData["coinBalance"] as? Int ?? 0
+            let lastCoinGrantDate = (userData["lastCoinGrantDate"] as? Timestamp)?.dateValue()
+            
+            if self.isSameDay(lastCoinGrantDate, now) {
+                return "Daily coin already claimed today."
+            }
+            
+            let newBalance = coinBalance + config.dailyFreeCoin
+            transaction.setData([
+                "coinBalance": newBalance,
+                "lastCoinGrantDate": Timestamp(date: startOfDay),
+                "updatedAt": Timestamp(date: now)
+            ], forDocument: userRef, merge: true)
+            
+            return "Claimed +\(config.dailyFreeCoin) coins. Balance: \(newBalance)."
+        }
+        
+        let message = (result as? String) ?? "Daily coin claimed."
+        lastPostCreationMessage = message
+        
+        await refreshUserEconomy(userId: userId)
+        return message
+    }
+    
     // MARK: - Create Post
     func createPost(content: String, category: Post.PostCategory, userId: String, coordinate: CLLocationCoordinate2D) async throws -> String {
         isLoading = true
         errorMessage = nil
+        lastPostCreationMessage = nil
         
         do {
-            let post = Post(
-                userId: userId,
-                content: content,
-                category: category,
-                latitude: coordinate.latitude,
-                longitude: coordinate.longitude
-            )
+            let adminConfig = await loadAdminConfiguration()
+            let now = Date()
+            let startOfDay = Calendar.current.startOfDay(for: now)
+            let expiresAt = Calendar.current.date(
+                byAdding: .hour,
+                value: adminConfig.postVisibilityDurationHours,
+                to: now
+            ) ?? now
             
-            // Convert to dictionary manually to avoid @DocumentID encoding issues
-            let data: [String: Any] = [
-                "userId": post.userId,
-                "date": post.date,
-                "content": post.content,
-                "category": post.category.rawValue,
-                "latitude": post.latitude,
-                "longitude": post.longitude,
-                "likeCount": post.likeCount,
-                "dislikeCount": post.dislikeCount,
-                "reportCount": post.reportCount,
-                "status": post.status.rawValue
-            ]
+            let postRef = db.collection("posts").document()
+            let userRef = db.collection("users").document(userId)
+            var transactionMessage = "Post created successfully."
             
-            let docRef = try await db.collection("posts").addDocument(data: data)
+            let transactionResult = try await db.runTransaction { transaction, errorPointer in
+                let userSnapshot: DocumentSnapshot
+                do {
+                    userSnapshot = try transaction.getDocument(userRef)
+                } catch {
+                    errorPointer?.pointee = error as NSError
+                    return nil
+                }
+                
+                let userData = userSnapshot.data() ?? [:]
+                var coinBalance = userData["coinBalance"] as? Int ?? 0
+                let rawDailyPostCount = userData["dailyPostCount"] as? Int ?? 0
+                let dailyPostCountDate = (userData["dailyPostCountDate"] as? Timestamp)?.dateValue()
+                var dailyPostCount = self.normalizedDailyPostCount(
+                    rawCount: rawDailyPostCount,
+                    rawDate: dailyPostCountDate,
+                    now: now
+                )
+                
+                let needsCoin = dailyPostCount >= adminConfig.dailyFreePostLimit
+                if needsCoin && coinBalance < 1 {
+                    errorPointer?.pointee = PostCreationError.insufficientCoins(required: 1, balance: coinBalance) as NSError
+                    return nil
+                }
+                
+                let spentCoin = needsCoin ? 1 : 0
+                coinBalance -= spentCoin
+                dailyPostCount += 1
+                
+                transaction.setData([
+                    "coinBalance": coinBalance,
+                    "dailyPostCount": dailyPostCount,
+                    "dailyPostCountDate": Timestamp(date: startOfDay),
+                    "updatedAt": Timestamp(date: now)
+                ], forDocument: userRef, merge: true)
+                
+                let post = Post(
+                    id: postRef.documentID,
+                    userId: userId,
+                    date: now,
+                    content: content,
+                    category: category,
+                    latitude: coordinate.latitude,
+                    longitude: coordinate.longitude,
+                    likeCount: 0,
+                    dislikeCount: 0,
+                    reportCount: 0,
+                    status: .active
+                )
+                
+                transaction.setData([
+                    "userId": post.userId,
+                    "date": post.date,
+                    "expiresAt": Timestamp(date: expiresAt),
+                    "content": post.content,
+                    "category": post.category.rawValue,
+                    "latitude": post.latitude,
+                    "longitude": post.longitude,
+                    "likeCount": post.likeCount,
+                    "dislikeCount": post.dislikeCount,
+                    "reportCount": post.reportCount,
+                    "status": post.status.rawValue,
+                    "coinSpent": spentCoin
+                ], forDocument: postRef)
+                
+                if spentCoin > 0 {
+                    transactionMessage = "Post created. -1 coin (Balance: \(coinBalance))."
+                } else {
+                    let freeUsed = min(dailyPostCount, adminConfig.dailyFreePostLimit)
+                    transactionMessage = "Post created. Free posts today: \(freeUsed)/\(adminConfig.dailyFreePostLimit)."
+                }
+                
+                return postRef.documentID
+            }
+            
+            guard let postID = transactionResult as? String else {
+                throw NSError(
+                    domain: "PostManager",
+                    code: -1,
+                    userInfo: [NSLocalizedDescriptionKey: "Failed to create post."]
+                )
+            }
+            
+            lastPostCreationMessage = transactionMessage
+            await refreshUserEconomy(userId: userId)
             isLoading = false
-            return docRef.documentID
+            return postID
             
         } catch {
             errorMessage = error.localizedDescription
@@ -110,7 +354,7 @@ class PostManager: ObservableObject {
             }
     }
     
-    // MARK: - Fetch All Posts (Real-time - Last 24 hours only)
+    // MARK: - Fetch All Posts (Real-time - Visibility duration)
     func fetchAllPosts() {
         // Remove existing listener before creating a new one
         allPostsListener?.remove()
@@ -118,14 +362,14 @@ class PostManager: ObservableObject {
         print("🔄 Starting to fetch all posts...")
         print("🔍 Device: \(UIDevice.current.name)")
         
-        // Calculate 24 hours ago
-        let twentyFourHoursAgo = Calendar.current.date(byAdding: .hour, value: -24, to: Date()) ?? Date()
-        print("⏰ Fetching posts newer than: \(twentyFourHoursAgo)")
+        // Calculate visibility cutoff based on admin configuration
+        let cutoffDate = currentVisibilityCutoffDate()
+        print("⏰ Fetching posts newer than: \(cutoffDate)")
         
         // Try with 24-hour filter first
         allPostsListener = db.collection("posts")
             .whereField("status", isEqualTo: "active")
-            .whereField("date", isGreaterThan: Timestamp(date: twentyFourHoursAgo))
+            .whereField("date", isGreaterThan: Timestamp(date: cutoffDate))
             .order(by: "date", descending: true)
             .limit(to: 50)
             .addSnapshotListener { [weak self] snapshot, error in
@@ -134,7 +378,7 @@ class PostManager: ObservableObject {
                 Task { @MainActor in
                     if let error = error {
                         let errorMsg = error.localizedDescription
-                        print("❌ Error fetching posts with 24h filter: \(errorMsg)")
+                        print("❌ Error fetching posts with visibility filter: \(errorMsg)")
                         
                         // If it's an index error, try fallback query
                         if errorMsg.contains("index") || errorMsg.contains("requires an index") {
@@ -153,7 +397,7 @@ class PostManager: ObservableObject {
                         return
                     }
                     
-                    print("✅ Fetched \(documents.count) posts from last 24 hours")
+                    print("✅ Fetched \(documents.count) visible posts")
                     print("📱 Device: \(UIDevice.current.name)")
                     
                     let parsed = documents.compactMap { document in
@@ -209,16 +453,16 @@ class PostManager: ObservableObject {
                     print("✅ Fallback: Fetched \(documents.count) active posts")
                     print("📱 Device: \(UIDevice.current.name)")
                     
-                    // Filter to last 24 hours client-side
-                    let twentyFourHoursAgo = Calendar.current.date(byAdding: .hour, value: -24, to: Date()) ?? Date()
+                    // Filter by configured visibility duration client-side
+                    let cutoffDate = self.currentVisibilityCutoffDate()
                     
                     let parsed = documents.compactMap { document -> Post? in
                         guard let post = self.parsePost(from: document) else { return nil }
-                        // Client-side filter for 24 hours
-                        return post.date > twentyFourHoursAgo ? post : nil
+                        // Client-side filter for configurable visibility duration
+                        return post.date > cutoffDate ? post : nil
                     }
                     
-                    print("✅ After 24h filter: \(parsed.count) posts")
+                    print("✅ After visibility filter: \(parsed.count) posts")
                     
                     if !parsed.isEmpty {
                         print("📍 Sample posts:")
@@ -268,11 +512,11 @@ class PostManager: ObservableObject {
                     
                     print("✅ Successfully parsed \(allParsed.count) posts")
                     
-                    // Filter to last 24 hours client-side
-                    let twentyFourHoursAgo = Calendar.current.date(byAdding: .hour, value: -24, to: Date()) ?? Date()
-                    let filtered = allParsed.filter { $0.date > twentyFourHoursAgo }
+                    // Filter using configurable visibility duration
+                    let cutoffDate = self.currentVisibilityCutoffDate()
+                    let filtered = allParsed.filter { $0.date > cutoffDate }
                     
-                    print("✅ After 24h filter: \(filtered.count) posts")
+                    print("✅ After visibility filter: \(filtered.count) posts")
                     
                     if !filtered.isEmpty {
                         print("📍 Sample posts:")
@@ -280,7 +524,7 @@ class PostManager: ObservableObject {
                             print("   \(index + 1). '\(post.content)' at (\(post.latitude), \(post.longitude)) - \(post.date)")
                         }
                     } else if !allParsed.isEmpty {
-                        print("⚠️ Posts exist but all are older than 24 hours")
+                        print("⚠️ Posts exist but all are older than visibility duration")
                         print("📅 Oldest post: \(allParsed.map { $0.date }.min() ?? Date())")
                         print("📅 Newest post: \(allParsed.map { $0.date }.max() ?? Date())")
                     }
@@ -584,4 +828,3 @@ class PostManager: ObservableObject {
         allPostsListener?.remove()
     }
 }
-

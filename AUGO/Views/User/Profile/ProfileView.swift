@@ -12,6 +12,8 @@ struct ProfileView: View {
     @State private var showDeleteAlert = false
     @State private var postToDelete: Post?
     @State private var errorMessage: String?
+    @State private var showEconomyAlert = false
+    @State private var economyAlertMessage = ""
     
     // Computed properties for real user data
     private var userName: String {
@@ -32,6 +34,26 @@ struct ProfileView: View {
     
     private var totalPoints: Int {
         authManager.userProfile?.score ?? 0
+    }
+    
+    private var coinBalance: Int {
+        postManager.userEconomy?.coinBalance ?? authManager.userProfile?.coinBalance ?? 0
+    }
+    
+    private var freePostsLeft: Int {
+        postManager.userEconomy?.freePostsLeft ?? 0
+    }
+    
+    private var dailyFreePostLimit: Int {
+        postManager.userEconomy?.dailyFreePostLimit ?? 0
+    }
+    
+    private var canClaimDailyCoin: Bool {
+        postManager.userEconomy?.canClaimDailyCoin ?? false
+    }
+    
+    private var dailyCoinReward: Int {
+        postManager.userEconomy?.dailyCoinReward ?? 0
     }
 
     var body: some View {
@@ -97,8 +119,60 @@ struct ProfileView: View {
                         if let userId = authManager.user?.uid {
                             print("👤 Setting up real-time listener for user posts: \(userId)")
                             postManager.fetchUserPosts(userId: userId)
+                            Task {
+                                await postManager.refreshUserEconomy(userId: userId)
+                            }
                         }
                     }
+                    
+                    // MARK: Coins & Daily Posts
+                    VStack(alignment: .leading, spacing: 10) {
+                        SectionTitle("Coins")
+                        
+                        Text("Points and coins are separate.")
+                            .font(.footnote)
+                            .foregroundColor(.gray)
+                        
+                        HStack(spacing: 12) {
+                            EconomyInfoCard(
+                                title: "Coin Balance",
+                                value: "\(coinBalance)",
+                                icon: "bitcoinsign.circle.fill"
+                            )
+                            EconomyInfoCard(
+                                title: "Free Posts Left",
+                                value: "\(freePostsLeft)/\(dailyFreePostLimit)",
+                                icon: "square.and.pencil"
+                            )
+                        }
+                        
+                        Button {
+                            guard let userId = authManager.user?.uid else { return }
+                            Task {
+                                do {
+                                    let message = try await postManager.claimDailyLoginCoin(userId: userId)
+                                    economyAlertMessage = message
+                                    showEconomyAlert = true
+                                } catch {
+                                    economyAlertMessage = "Failed to claim daily coin: \(error.localizedDescription)"
+                                    showEconomyAlert = true
+                                }
+                            }
+                        } label: {
+                            HStack {
+                                Image(systemName: "gift.fill")
+                                Text(canClaimDailyCoin ? "Claim Daily +\(dailyCoinReward) Coins" : "Daily Coin Already Claimed")
+                                    .font(.subheadline.weight(.semibold))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(canClaimDailyCoin ? Color.Brand.primary : Color.gray.opacity(0.25))
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                        }
+                        .disabled(!canClaimDailyCoin)
+                    }
+                    .padding(.horizontal, 16)
 
                     // MARK: Today Post
                     VStack(alignment: .leading, spacing: 12) {
@@ -109,16 +183,14 @@ struct ProfileView: View {
                                 .font(.subheadline)
                                 .foregroundColor(.gray)
                                 .padding()
-                        } else {
-                            ForEach(postManager.userPosts.prefix(3)) { post in
-                                TodayPostCard(
-                                    post: post,
-                                    onDelete: {
-                                        postToDelete = post
-                                        showDeleteAlert = true
-                                    }
-                                )
-                            }
+                        } else if let latestPost = postManager.userPosts.first {
+                            TodayPostCard(
+                                post: latestPost,
+                                onDelete: {
+                                    postToDelete = latestPost
+                                    showDeleteAlert = true
+                                }
+                            )
                         }
                     }
                     .padding(.horizontal, 16)
@@ -200,11 +272,19 @@ struct ProfileView: View {
         } message: {
             Text("Are you sure you want to delete this post?")
         }
+        .alert("Coins", isPresented: $showEconomyAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(economyAlertMessage)
+        }
         .onChange(of: authManager.user?.uid) { _, newUserId in
             // Re-setup listener if user changes
             if let userId = newUserId {
                 print("👤 User changed, re-setting up listener: \(userId)")
                 postManager.fetchUserPosts(userId: userId)
+                Task {
+                    await postManager.refreshUserEconomy(userId: userId)
+                }
             }
         }
     }
@@ -273,6 +353,34 @@ private struct ProfileStatCard: View {
     }
 }
 
+private struct EconomyInfoCard: View {
+    let title: String
+    let value: String
+    let icon: String
+    
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .foregroundColor(Color.Brand.primary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                Text(value)
+                    .font(.headline)
+                    .foregroundColor(.primary)
+            }
+            Spacer()
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.white)
+                .shadow(color: .black.opacity(0.04), radius: 3, y: 2)
+        )
+    }
+}
+
 private struct TodayPostCard: View {
     let post: Post
     let onDelete: () -> Void
@@ -294,33 +402,29 @@ private struct TodayPostCard: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(Color.Brand.primary.opacity(0.15))
-                    .frame(width: 28, height: 28)
-                    .overlay(
-                        Image(systemName: iconForCategory)
-                            .foregroundColor(Color.Brand.primary)
-                            .font(.system(size: 14, weight: .semibold))
-                    )
-
-                VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(categoryColor)
+                        .frame(width: 12, height: 12)
+                    
                     Text(post.category.rawValue)
-                        .font(.caption)
-                        .foregroundColor(.primary)
-
-                    Text(timeAgo)
-                        .font(.caption2)
+                        .font(.caption.weight(.semibold))
                         .foregroundColor(.gray)
                 }
-
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(categoryColor.opacity(0.14))
+                )
+                
                 Spacer()
-
+                
                 Button(action: onDelete) {
                     Image(systemName: "trash")
-                        .foregroundColor(.red.opacity(0.8))
-                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.red.opacity(0.85))
+                        .font(.system(size: 16, weight: .bold))
                 }
             }
 
@@ -328,41 +432,64 @@ private struct TodayPostCard: View {
                 .font(.subheadline)
                 .foregroundColor(.primary)
                 .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(2)
 
-            HStack(spacing: 16) {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.up")
-                    Text("\(post.likeCount)")
+            HStack {
+                Text(timeAgo)
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color(UIColor.systemGray6))
+                    )
+                
+                Spacer()
+                
+                HStack(spacing: 14) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(.purple)
+                        Text("\(post.likeCount)")
+                            .font(.subheadline)
+                    }
+                    
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.down")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(.black)
+                        Text("\(post.dislikeCount)")
+                            .font(.subheadline)
+                    }
                 }
-
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.down")
-                    Text("\(post.dislikeCount)")
-                }
-            }
-            .font(.caption)
-            .foregroundColor(.gray)
+            }            
         }
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 14)
                 .fill(Color.white)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(Color(UIColor.systemGray5), lineWidth: 1)
+                )
                 .shadow(color: .black.opacity(0.06), radius: 4, y: 3)
         )
     }
     
-    private var iconForCategory: String {
+    private var categoryColor: Color {
         switch post.category {
         case .casual:
-            return "bolt.heart"
+            return .yellow
         case .event:
-            return "calendar"
+            return .orange
         case .question:
-            return "questionmark.circle"
+            return .blue
         case .announcement:
-            return "megaphone"
+            return .purple
         case .arChallenge:
-            return "arkit"
+            return .green
         }
     }
 }

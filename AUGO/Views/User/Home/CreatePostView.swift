@@ -44,6 +44,18 @@ struct CreatePostView: View {
     private var userName: String {
         authManager.userProfile?.nickname ?? "User"
     }
+    
+    private var coinBalance: Int {
+        postManager.userEconomy?.coinBalance ?? authManager.userProfile?.coinBalance ?? 0
+    }
+    
+    private var freePostsLeft: Int {
+        postManager.userEconomy?.freePostsLeft ?? 0
+    }
+    
+    private var freePostLimit: Int {
+        postManager.userEconomy?.dailyFreePostLimit ?? 0
+    }
 
     var body: some View {
         ZStack {
@@ -90,6 +102,30 @@ struct CreatePostView: View {
                             .foregroundColor(Color.Brand.primary)
                             .clipShape(Capsule())
                         }
+                    }
+                    
+                    HStack(spacing: 10) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "bitcoinsign.circle.fill")
+                                .foregroundColor(.orange)
+                            Text("Coins: \(coinBalance)")
+                                .font(.caption.weight(.semibold))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.orange.opacity(0.12))
+                        .clipShape(Capsule())
+                        
+                        HStack(spacing: 6) {
+                            Image(systemName: "square.and.pencil")
+                                .foregroundColor(Color.Brand.primary)
+                            Text("Free posts left: \(freePostsLeft)/\(freePostLimit)")
+                                .font(.caption.weight(.semibold))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.Brand.primary.opacity(0.12))
+                        .clipShape(Capsule())
                     }
 
                     ZStack(alignment: .topLeading) {
@@ -173,6 +209,12 @@ struct CreatePostView: View {
                     print("⚠️ Location not available yet, will use fallback if needed")
                 }
             }
+            
+            if let userId = authManager.user?.uid {
+                Task {
+                    await postManager.refreshUserEconomy(userId: userId)
+                }
+            }
         }
         .alert("Post", isPresented: $showAlert) {
             Button("OK") {
@@ -222,7 +264,7 @@ struct CreatePostView: View {
             )
             
             print("✅ Post created with ID: \(postId) at location: \(coordinate.latitude), \(coordinate.longitude)")
-            alertMessage = "Post created successfully at your current location!"
+            alertMessage = postManager.lastPostCreationMessage ?? "Post created successfully at your current location!"
             showAlert = true
             isSubmitting = false
             
@@ -233,4 +275,3 @@ struct CreatePostView: View {
         }
     }
 }
-
