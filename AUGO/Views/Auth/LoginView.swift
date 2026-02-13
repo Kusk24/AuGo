@@ -129,7 +129,7 @@ struct LoginView: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 12)
+                                    Capsule()
                                         .fill(Color.Brand.primary)
                                 )
                             }

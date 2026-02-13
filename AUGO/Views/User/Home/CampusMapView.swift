@@ -3,6 +3,20 @@ internal import MapKit
 import FirebaseAuth
 import FirebaseFirestore
 
+private enum CampusMapSheet: Identifiable {
+    case announcement
+    case cluster
+    case postDetail
+
+    var id: Int {
+        switch self {
+        case .announcement: return 1
+        case .cluster: return 2
+        case .postDetail: return 3
+        }
+    }
+}
+
 struct CampusMapView: View {
     @Binding var showAnnouncement: Bool
 
@@ -14,16 +28,16 @@ struct CampusMapView: View {
     @State private var cameraPosition: MapCameraPosition = .automatic
 
     @State private var selectedAnnouncement: Announcement?
-    @State private var showSingleAnnouncement = false
 
     @State private var isPresentingCreatePost = false
 
     @State private var selectedCluster: PostCluster?
-    @State private var showClusterSheet = false
+    @State private var activeSheet: CampusMapSheet?
     
     @State private var selectedPostID: UUID? = nil
     @State private var postMapping: [UUID: Post] = [:]
     @State private var userDisplayNames: [String: String] = [:]
+    @State private var pendingSelectedPost: CampusPost?
     
     @State private var showReportAlert = false
     @State private var postToReport: Post?    
@@ -317,7 +331,7 @@ struct CampusMapView: View {
     private func makeClusterAnnotation(_ cluster: PostCluster) -> some View {
         PostClusterView(cluster: cluster) {
             selectedCluster = cluster
-            showClusterSheet = true
+            activeSheet = .cluster
         }
     }
     
@@ -325,7 +339,7 @@ struct CampusMapView: View {
         AnnouncementPinView(announcement: ann) {
             announcementCenter.markAsRead(ann)
             selectedAnnouncement = ann
-            showSingleAnnouncement = true
+            activeSheet = .announcement
         }
     }
 
@@ -374,6 +388,7 @@ struct CampusMapView: View {
                     .onTapGesture {
                         print("📍 Tapped post: \(post.message)")
                         selectedPost = post
+                        activeSheet = .postDetail
                     }
                 }
             } else {
@@ -382,12 +397,8 @@ struct CampusMapView: View {
                     ZStack {
                         PostClusterView(cluster: cluster) {
                             selectedCluster = cluster
-                            showClusterSheet = true
+                            activeSheet = .cluster
                         }
-                    }
-                    .onTapGesture {
-                        selectedCluster = cluster
-                        showClusterSheet = true
                     }
                 }
             }
@@ -506,61 +517,84 @@ struct CampusMapView: View {
                 notificationButton
             }
         }
-        .sheet(isPresented: $showSingleAnnouncement) {
-            if let ann = selectedAnnouncement {
-                SingleAnnouncementView(announcement: ann)
+        .sheet(item: $activeSheet, onDismiss: {
+            if let pendingPost = pendingSelectedPost {
+                DispatchQueue.main.async {
+                    selectedPost = pendingPost
+                    pendingSelectedPost = nil
+                    activeSheet = .postDetail
+                }
             }
-        }
-        .sheet(isPresented: $showClusterSheet) {
-            if let cluster = selectedCluster {
-                ClusterPostListView(posts: cluster.posts) { selectedPost in
-                    self.selectedPost = selectedPost
+        }) {
+            switch $0 {
+            case .announcement:
+                if let ann = selectedAnnouncement {
+                    SingleAnnouncementView(announcement: ann)
+                } else {
+                    ProgressView().padding()
+                }
+            case .cluster:
+                if let cluster = selectedCluster {
+                    ClusterPostListView(posts: cluster.posts, postLookup: postMapping) { selectedPost in
+                        pendingSelectedPost = selectedPost
+                        activeSheet = nil
+                    }
+                } else {
+                    ProgressView().padding()
+                }
+            case .postDetail:
+                if let post = selectedPost {
+                    PostDetailCardView(
+                        post: post,
+                        firebasePost: postMapping[post.id],
+                        onReport: {
+                            print("🚨 Report button tapped")
+                            print("🔑 Looking for post ID: \(post.id)")
+                            print("🔑 Available mapping keys: \(postMapping.keys.map { $0.uuidString })")
+                            if let firebasePost = postMapping[post.id] {
+                                print("✅ showReportAlert set to true")
+                                print("🧾 postToReport: \(firebasePost.id ?? "nil")")
+                                postToReport = firebasePost
+                                showReportAlert = true
+                            } else {
+                                print("❌ No Firebase post found in mapping for post ID: \(post.id)")
+                            }
+                        },
+                        onLike: {
+                            guard let firebasePost = postMapping[post.id],
+                                  let postId = firebasePost.id,
+                                  let userId = authManager.user?.uid else { return }
+                            Task {
+                                try? await postManager.likePost(postId, userId: userId)
+                            }
+                        },
+                        onDislike: {
+                            guard let firebasePost = postMapping[post.id],
+                                  let postId = firebasePost.id,
+                                  let userId = authManager.user?.uid else { return }
+                            Task {
+                                try? await postManager.dislikePost(postId, userId: userId)
+                            }
+                        }
+                    )
+                    .presentationDetents([PresentationDetent.medium, PresentationDetent.large])
+                    .presentationDragIndicator(Visibility.visible)
+                    .alert("Report Post", isPresented: $showReportAlert) {
+                        reportAlertButtons
+                    } message: {
+                        Text("Why are you reporting this post?")
+                    }
+                } else {
+                    ProgressView().padding()
                 }
             }
         }
-        .sheet(item: $selectedPost, onDismiss: {
-            // Clear selected post when sheet is dismissed
-            selectedPostID = nil
-        }) { post in
-            PostDetailCardView(
-                post: post,
-                firebasePost: postMapping[post.id],
-                onReport: {
-                    print("🚨 Report button tapped")
-                    print("🔑 Looking for post ID: \(post.id)")
-                    print("🔑 Available mapping keys: \(postMapping.keys.map { $0.uuidString })")
-                    if let firebasePost = postMapping[post.id] {
-                        print("✅ showReportAlert set to true")
-                        print("🧾 postToReport: \(firebasePost.id ?? "nil")")
-                        postToReport = firebasePost
-                        showReportAlert = true
-                    } else {
-                        print("❌ No Firebase post found in mapping for post ID: \(post.id)")
-                    }
-                },
-                onLike: {
-                    guard let firebasePost = postMapping[post.id],
-                          let postId = firebasePost.id,
-                          let userId = authManager.user?.uid else { return }
-                    Task {
-                        try? await postManager.likePost(postId, userId: userId)
-                    }
-                },
-                onDislike: {
-                    guard let firebasePost = postMapping[post.id],
-                          let postId = firebasePost.id,
-                          let userId = authManager.user?.uid else { return }
-                    Task {
-                        try? await postManager.dislikePost(postId, userId: userId)
-                    }
+        .onChange(of: activeSheet) { _, newValue in
+            if newValue != .postDetail {
+                selectedPostID = nil
+                if newValue == nil {
+                    selectedPost = nil
                 }
-            )
-            .presentationDetents([PresentationDetent.medium, PresentationDetent.large])
-            .presentationDragIndicator(Visibility.visible)
-            .alert("Report Post", isPresented: $showReportAlert) {
-                reportAlertButtons
-            } message: {
-                Text("Why are you reporting this post?")
             }
         }
         .navigationDestination(isPresented: $isPresentingCreatePost) {

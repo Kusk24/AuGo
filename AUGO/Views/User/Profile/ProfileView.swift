@@ -55,6 +55,12 @@ struct ProfileView: View {
     private var dailyCoinReward: Int {
         postManager.userEconomy?.dailyCoinReward ?? 0
     }
+    
+    private var todayPosts: [Post] {
+        postManager.userPosts
+            .filter { Calendar.current.isDateInToday($0.date) }
+            .sorted { $0.date > $1.date }
+    }
 
     var body: some View {
         ZStack {
@@ -176,21 +182,33 @@ struct ProfileView: View {
 
                     // MARK: Today Post
                     VStack(alignment: .leading, spacing: 12) {
-                        SectionTitle("Today Post")
+                        SectionTitle("Today Posts")
 
-                        if postManager.userPosts.isEmpty {
+                        if postManager.isUserPostsLoading {
+                            HStack(spacing: 10) {
+                                ProgressView()
+                                Text("Loading your posts...")
+                                    .font(.subheadline)
+                                    .foregroundColor(.gray)
+                            }
+                            .padding()
+                        } else if todayPosts.isEmpty {
                             Text("No posts yet. Create your first post!")
                                 .font(.subheadline)
                                 .foregroundColor(.gray)
                                 .padding()
-                        } else if let latestPost = postManager.userPosts.first {
-                            TodayPostCard(
-                                post: latestPost,
-                                onDelete: {
-                                    postToDelete = latestPost
-                                    showDeleteAlert = true
+                        } else {
+                            LazyVStack(spacing: 12) {
+                                ForEach(Array(todayPosts.enumerated()), id: \.offset) { _, post in
+                                    TodayPostCard(
+                                        post: post,
+                                        onDelete: {
+                                            postToDelete = post
+                                            showDeleteAlert = true
+                                        }
+                                    )
                                 }
-                            )
+                            }
                         }
                     }
                     .padding(.horizontal, 16)

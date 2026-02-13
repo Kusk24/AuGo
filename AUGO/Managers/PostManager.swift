@@ -42,12 +42,14 @@ class PostManager: ObservableObject {
     @Published var userPosts: [Post] = []
     @Published var allPosts: [Post] = []
     @Published var isLoading = false
+    @Published var isUserPostsLoading = false
     @Published var errorMessage: String?
     @Published var lastPostCreationMessage: String?
     @Published var userEconomy: UserEconomySnapshot?
     
     private let db = Firestore.firestore()
     private var userPostsListener: ListenerRegistration?
+    private var listeningUserPostsForUserId: String?
     private var allPostsListener: ListenerRegistration?
     private var adminConfigCache: AdminConfiguration = .default
     private var lastAdminConfigFetch: Date?
@@ -313,8 +315,14 @@ class PostManager: ObservableObject {
     
     // MARK: - Fetch User Posts (Real-time)
     func fetchUserPosts(userId: String) {
+        if listeningUserPostsForUserId == userId, userPostsListener != nil {
+            return
+        }
+        
         // Remove existing listener to avoid duplicates
         userPostsListener?.remove()
+        listeningUserPostsForUserId = userId
+        isUserPostsLoading = true
         
         print("🔄 Setting up real-time listener for user \(userId) posts")
         
@@ -328,12 +336,14 @@ class PostManager: ObservableObject {
                     if let error = error {
                         print("❌ Error fetching user posts: \(error.localizedDescription)")
                         self.errorMessage = error.localizedDescription
+                        self.isUserPostsLoading = false
                         return
                     }
                     
                     guard let documents = snapshot?.documents else {
                         print("⚠️ No posts found for user \(userId)")
                         self.userPosts = []
+                        self.isUserPostsLoading = false
                         return
                     }
                     
@@ -345,6 +355,7 @@ class PostManager: ObservableObject {
                     
                     print("✅ Successfully parsed \(parsed.count) posts for user")
                     self.userPosts = parsed
+                    self.isUserPostsLoading = false
                     
                     // Print post IDs for debugging
                     if !parsed.isEmpty {
@@ -825,6 +836,8 @@ class PostManager: ObservableObject {
     // MARK: - Stop Listening
     func stopListening() {
         userPostsListener?.remove()
+        listeningUserPostsForUserId = nil
+        isUserPostsLoading = false
         allPostsListener?.remove()
     }
 }
