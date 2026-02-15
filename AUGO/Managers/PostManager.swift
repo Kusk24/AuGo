@@ -3,7 +3,12 @@ import Foundation
 import Combine
 import FirebaseFirestore
 import FirebaseAuth
+import FirebaseCore
 import CoreLocation
+import UIKit
+#if canImport(FirebaseStorage)
+import FirebaseStorage
+#endif
 
 @MainActor
 class PostManager: ObservableObject {
@@ -30,11 +35,26 @@ class PostManager: ObservableObject {
     
     enum PostCreationError: LocalizedError {
         case insufficientCoins(required: Int, balance: Int)
+        case invalidPhotoData
+        case missingStorageBucket
+        case missingAuthToken
+        case uploadFailed(statusCode: Int, body: String?)
         
         var errorDescription: String? {
             switch self {
             case let .insufficientCoins(required, balance):
                 return "Not enough coins. Need \(required), current balance is \(balance)."
+            case .invalidPhotoData:
+                return "One or more selected photos are invalid."
+            case .missingStorageBucket:
+                return "Firebase storage bucket is not configured."
+            case .missingAuthToken:
+                return "You must be signed in to upload photos."
+            case .uploadFailed(let statusCode, let body):
+                if let body, !body.isEmpty {
+                    return "Photo upload failed (\(statusCode)): \(body)"
+                }
+                return "Photo upload failed (\(statusCode))."
             }
         }
     }
@@ -199,7 +219,7 @@ class PostManager: ObservableObject {
     }
     
     // MARK: - Create Post
-    func createPost(content: String, category: Post.PostCategory, userId: String, coordinate: CLLocationCoordinate2D) async throws -> String {
+    func createPost(content: String, category: Post.PostCategory, userId: String, coordinate: CLLocationCoordinate2D, photoData: Data? = nil) async throws -> String {
         isLoading = true
         errorMessage = nil
         lastPostCreationMessage = nil
@@ -265,7 +285,8 @@ class PostManager: ObservableObject {
                     likeCount: 0,
                     dislikeCount: 0,
                     reportCount: 0,
-                    status: .active
+                    status: .active,
+                    photoPaths: []
                 )
                 
                 transaction.setData([
@@ -280,7 +301,8 @@ class PostManager: ObservableObject {
                     "dislikeCount": post.dislikeCount,
                     "reportCount": post.reportCount,
                     "status": post.status.rawValue,
-                    "coinSpent": spentCoin
+                    "coinSpent": spentCoin,
+                    "photoPaths": []
                 ], forDocument: postRef)
                 
                 if spentCoin > 0 {
@@ -299,6 +321,15 @@ class PostManager: ObservableObject {
                     code: -1,
                     userInfo: [NSLocalizedDescriptionKey: "Failed to create post."]
                 )
+            }
+
+            if let photoData {
+                let uploadedPath = try await uploadPostPhoto(postId: postID, userId: userId, photoData: photoData)
+                try await db.collection("posts").document(postID).updateData([
+                    "photoPaths": [uploadedPath],
+                    "updatedAt": Timestamp(date: now)
+                ])
+                transactionMessage += " Added 1 photo."
             }
             
             lastPostCreationMessage = transactionMessage
@@ -567,6 +598,15 @@ class PostManager: ObservableObject {
         print("🗑️ Deleting post from Firestore: \(postId)")
         
         do {
+            let postRef = db.collection("posts").document(postId)
+            let snapshot = try await postRef.getDocument()
+            let photoPaths = snapshot.data()?["photoPaths"] as? [String] ?? []
+
+            if !photoPaths.isEmpty {
+                try await deletePostPhotos(photoPaths)
+                print("🧹 Deleted \(photoPaths.count) photo(s) for post: \(postId)")
+            }
+
             try await db.collection("posts").document(postId).delete()
             print("✅ Post deleted successfully from Firestore: \(postId)")
             print("📡 Real-time listeners will automatically update the UI")
@@ -577,6 +617,26 @@ class PostManager: ObservableObject {
             isLoading = false
             throw error
         }
+    }
+
+    private func deletePostPhotos(_ photoPaths: [String]) async throws {
+#if canImport(FirebaseStorage)
+        for path in photoPaths {
+            do {
+                try await Storage.storage().reference(withPath: path).delete()
+            } catch {
+                // Ignore missing files; surface all other storage failures.
+                let nsError = error as NSError
+                if nsError.domain == StorageErrorDomain,
+                   StorageErrorCode(rawValue: nsError.code) == .objectNotFound {
+                    continue
+                }
+                throw error
+            }
+        }
+#else
+        _ = photoPaths
+#endif
     }
     
     // MARK: - Update Post
@@ -732,7 +792,8 @@ class PostManager: ObservableObject {
                 likeCount: data["likeCount"] as? Int ?? 0,
                 dislikeCount: data["dislikeCount"] as? Int ?? 0,
                 reportCount: data["reportCount"] as? Int ?? 0,
-                status: Post.PostStatus(rawValue: data["status"] as? String ?? "active") ?? .active
+                status: Post.PostStatus(rawValue: data["status"] as? String ?? "active") ?? .active,
+                photoPaths: data["photoPaths"] as? [String] ?? []
             )
             return post
         }
@@ -759,10 +820,68 @@ class PostManager: ObservableObject {
             likeCount: data["likeCount"] as? Int ?? 0,
             dislikeCount: data["dislikeCount"] as? Int ?? 0,
             reportCount: data["reportCount"] as? Int ?? 0,
-            status: Post.PostStatus(rawValue: data["status"] as? String ?? "active") ?? .active
+            status: Post.PostStatus(rawValue: data["status"] as? String ?? "active") ?? .active,
+            photoPaths: data["photoPaths"] as? [String] ?? []
         )
 
         return post
+    }
+
+    private func uploadPostPhoto(postId: String, userId: String, photoData: Data) async throws -> String {
+#if canImport(FirebaseStorage)
+        guard !photoData.isEmpty else {
+            throw PostCreationError.invalidPhotoData
+        }
+
+        let baseRef = Storage.storage().reference().child("photos").child(postId)
+        let fileName = "\(userId)_\(Int(Date().timeIntervalSince1970)).jpg"
+        let fileRef = baseRef.child(fileName)
+        let metadata = StorageMetadata()
+        metadata.contentType = "image/jpeg"
+        _ = try await fileRef.putDataAsync(photoData, metadata: metadata)
+        return fileRef.fullPath
+#else
+        return try await uploadPostPhotoViaREST(postId: postId, userId: userId, photoData: photoData)
+#endif
+    }
+
+    private func uploadPostPhotoViaREST(postId: String, userId: String, photoData: Data) async throws -> String {
+        guard !photoData.isEmpty else {
+            throw PostCreationError.invalidPhotoData
+        }
+        guard let bucket = FirebaseApp.app()?.options.storageBucket else {
+            throw PostCreationError.missingStorageBucket
+        }
+        guard let user = Auth.auth().currentUser else {
+            throw PostCreationError.missingAuthToken
+        }
+
+        let token = try await user.getIDToken()
+        let objectPath = "photos/\(postId)/\(userId)_\(Int(Date().timeIntervalSince1970)).jpg"
+        var components = URLComponents(string: "https://firebasestorage.googleapis.com/v0/b/\(bucket)/o")
+        components?.queryItems = [
+            URLQueryItem(name: "uploadType", value: "media"),
+            URLQueryItem(name: "name", value: objectPath)
+        ]
+        guard let url = components?.url else {
+            throw PostCreationError.invalidPhotoData
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        request.httpBody = photoData
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw PostCreationError.uploadFailed(statusCode: -1, body: nil)
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw PostCreationError.uploadFailed(statusCode: http.statusCode, body: String(data: data, encoding: .utf8))
+        }
+
+        return objectPath
     }
     
     // MARK: - Report Post

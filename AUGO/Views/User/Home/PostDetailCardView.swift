@@ -2,6 +2,7 @@ import SwiftUI
 import FirebaseAuth
 import CoreLocation
 import UIKit
+import FirebaseCore
 
 struct PostDetailCardView: View {
     let post: CampusPost
@@ -64,6 +65,10 @@ struct PostDetailCardView: View {
         if hours < 24 { return "\(hours)h ago" }
         return "\(hours/24)d ago"
     }
+
+    private var photoPaths: [String] {
+        firebasePost?.photoPaths ?? []
+    }
     
     var body: some View {
         NavigationView {
@@ -102,6 +107,49 @@ struct PostDetailCardView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(.horizontal)
+
+                    if !photoPaths.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Photos")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 10) {
+                                    ForEach(photoPaths, id: \.self) { path in
+                                        if let url = storageDownloadURL(for: path) {
+                                            AsyncImage(url: url) { phase in
+                                                switch phase {
+                                                case .empty:
+                                                    ZStack {
+                                                        RoundedRectangle(cornerRadius: 10)
+                                                            .fill(Color(UIColor.systemGray5))
+                                                        ProgressView()
+                                                    }
+                                                case .success(let image):
+                                                    image
+                                                        .resizable()
+                                                        .scaledToFill()
+                                                case .failure:
+                                                    ZStack {
+                                                        RoundedRectangle(cornerRadius: 10)
+                                                            .fill(Color(UIColor.systemGray5))
+                                                        Image(systemName: "photo")
+                                                            .foregroundColor(.secondary)
+                                                    }
+                                                @unknown default:
+                                                    EmptyView()
+                                                }
+                                            }
+                                            .frame(width: 220, height: 220)
+                                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
                     
                     Divider()
                         .padding(.horizontal)
@@ -363,5 +411,12 @@ struct PostDetailCardView: View {
         }
         
         UIApplication.shared.open(mapsURL)
+    }
+
+    private func storageDownloadURL(for assetPath: String) -> URL? {
+        guard let app = FirebaseApp.app(), let bucket = app.options.storageBucket else { return nil }
+        let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+        guard let escapedPath = assetPath.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
+        return URL(string: "https://firebasestorage.googleapis.com/v0/b/\(bucket)/o/\(escapedPath)?alt=media")
     }
 }

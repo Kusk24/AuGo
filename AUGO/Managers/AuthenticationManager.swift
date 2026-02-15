@@ -472,16 +472,21 @@ class AuthenticationManager: ObservableObject {
                 "coinBalance": profile.coinBalance,
                 "dailyPostCount": profile.dailyPostCount,
                 "arCapturedCharacters": profile.arCapturedCharacters.map {
-                    [
+                    var payload: [String: Any] = [
                         "spawnId": $0.spawnId,
                         "title": $0.title,
                         "assetPath": $0.assetPath,
                         "coinValue": $0.coinValue,
                         "catchCount": $0.catchCount,
-                        "catchableTime": $0.catchableTime,
-                        "lastCapturedAt": $0.lastCapturedAt.map(Timestamp.init(date:)),
-                        "nextCatchAt": $0.nextCatchAt.map(Timestamp.init(date:))
-                    ].compactMapValues { $0 }
+                        "catchableTime": $0.catchableTime
+                    ]
+                    if let lastCapturedAt = $0.lastCapturedAt {
+                        payload["lastCapturedAt"] = Timestamp(date: lastCapturedAt)
+                    }
+                    if let nextCatchAt = $0.nextCatchAt {
+                        payload["nextCatchAt"] = Timestamp(date: nextCatchAt)
+                    }
+                    return payload
                 }
             ]
             try await db.collection("users").document(uid).setData(data, merge: true)

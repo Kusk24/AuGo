@@ -17,6 +17,7 @@ struct ARCameraView: View {
                 modelEntity: viewModel.modelEntity,
                 shouldRenderModel: viewModel.canRenderModel,
                 renderSpawnID: viewModel.renderSpawnID,
+                nearbyPosts: viewModel.nearbyPosts,
                 onCapture: {
                     viewModel.captureCurrentSpawn()
                 }
@@ -82,6 +83,7 @@ private struct ARRealityContainerView: UIViewRepresentable {
     let modelEntity: ModelEntity?
     let shouldRenderModel: Bool
     let renderSpawnID: String?
+    let nearbyPosts: [ARNearbyPost]
     let onCapture: () -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -104,6 +106,7 @@ private struct ARRealityContainerView: UIViewRepresentable {
 
     func updateUIView(_ arView: ARView, context: Context) {
         context.coordinator.onCapture = onCapture
+        context.coordinator.updateFloatingPosts(nearbyPosts)
 
         guard shouldRenderModel, let modelEntity else {
             context.coordinator.clearModelIfNeeded()
@@ -118,6 +121,10 @@ private struct ARRealityContainerView: UIViewRepresentable {
         private var anchorEntity: AnchorEntity?
         private weak var currentModelEntity: ModelEntity?
         private var currentSpawnID: String?
+        private var postAnchors: [String: AnchorEntity] = [:]
+        private var postCards: [String: UIHostingController<ARNearbyPostCard>] = [:]
+        private var displayLink: CADisplayLink?
+        private let floatingStartTime = CACurrentMediaTime()
         var onCapture: () -> Void
 
         init(onCapture: @escaping () -> Void) {
@@ -128,6 +135,7 @@ private struct ARRealityContainerView: UIViewRepresentable {
             self.arView = arView
             let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
             arView.addGestureRecognizer(tap)
+            startDisplayLink()
         }
 
         func clearModelIfNeeded() {
@@ -135,6 +143,89 @@ private struct ARRealityContainerView: UIViewRepresentable {
             currentSpawnID = nil
             anchorEntity?.removeFromParent()
             anchorEntity = nil
+        }
+
+        func updateFloatingPosts(_ posts: [ARNearbyPost]) {
+            guard let arView else { return }
+
+            let activeIDs = Set(posts.map(\.id))
+            for existingID in postAnchors.keys where !activeIDs.contains(existingID) {
+                postAnchors[existingID]?.removeFromParent()
+                postAnchors.removeValue(forKey: existingID)
+
+                postCards[existingID]?.view.removeFromSuperview()
+                postCards.removeValue(forKey: existingID)
+            }
+
+            for (index, post) in posts.enumerated() {
+                if let host = postCards[post.id] {
+                    host.rootView = ARNearbyPostCard(post: post)
+                    continue
+                }
+
+                let anchor = AnchorEntity(world: floatingPostPosition(index: index, arView: arView))
+                arView.scene.addAnchor(anchor)
+                postAnchors[post.id] = anchor
+
+                let host = UIHostingController(rootView: ARNearbyPostCard(post: post))
+                host.view.backgroundColor = .clear
+                host.view.frame = CGRect(x: 0, y: 0, width: 230, height: 190)
+                arView.addSubview(host.view)
+                postCards[post.id] = host
+            }
+
+            updateFloatingPostScreenPositions()
+        }
+
+        private func floatingPostPosition(index: Int, arView: ARView) -> SIMD3<Float> {
+            let cameraTransform = arView.cameraTransform.matrix
+            let cameraPosition = SIMD3<Float>(cameraTransform.columns.3.x, cameraTransform.columns.3.y, cameraTransform.columns.3.z)
+            let forward = -SIMD3<Float>(cameraTransform.columns.2.x, cameraTransform.columns.2.y, cameraTransform.columns.2.z)
+            let right = SIMD3<Float>(cameraTransform.columns.0.x, cameraTransform.columns.0.y, cameraTransform.columns.0.z)
+            let up = SIMD3<Float>(cameraTransform.columns.1.x, cameraTransform.columns.1.y, cameraTransform.columns.1.z)
+
+            let normalizedForward = simd_normalize(forward)
+            let normalizedRight = simd_normalize(right)
+            let normalizedUp = simd_normalize(up)
+
+            let horizontalOffset = Float(index % 2 == 0 ? -1 : 1) * (0.35 + Float(index) * 0.12)
+            let depth = 1.7 + Float(index) * 0.35
+            let height = 0.2 + Float(index % 3) * 0.08
+
+            return cameraPosition
+                + normalizedForward * depth
+                + normalizedRight * horizontalOffset
+                + normalizedUp * height
+        }
+
+        private func startDisplayLink() {
+            displayLink?.invalidate()
+            let link = CADisplayLink(target: self, selector: #selector(onDisplayTick))
+            link.add(to: .main, forMode: .common)
+            displayLink = link
+        }
+
+        @objc
+        private func onDisplayTick() {
+            updateFloatingPostScreenPositions()
+        }
+
+        private func updateFloatingPostScreenPositions() {
+            guard let arView else { return }
+
+            let t = CACurrentMediaTime() - floatingStartTime
+            for (id, anchor) in postAnchors {
+                guard let host = postCards[id] else { continue }
+                let worldPosition = anchor.position(relativeTo: nil)
+                guard let projected = arView.project(worldPosition) else {
+                    host.view.isHidden = true
+                    continue
+                }
+
+                let bob = CGFloat(sin(t * 1.7 + Double(abs(id.hashValue % 7))) * 8.0)
+                host.view.isHidden = false
+                host.view.center = CGPoint(x: projected.x, y: projected.y + bob)
+            }
         }
 
         func render(modelEntity: ModelEntity, renderSpawnID: String?) {
@@ -208,6 +299,14 @@ private struct ARRealityContainerView: UIViewRepresentable {
 
             return false
         }
+
+        deinit {
+            displayLink?.invalidate()
+            postCards.values.forEach { $0.view.removeFromSuperview() }
+            postCards.removeAll()
+            postAnchors.values.forEach { $0.removeFromParent() }
+            postAnchors.removeAll()
+        }
     }
 }
 
@@ -221,6 +320,7 @@ private final class ARCameraViewModel: ObservableObject {
     @Published var renderSpawnID: String?
     @Published var coinValueText: String?
     @Published var catchInstructionText = "Get inside catch radius to start combo"
+    @Published var nearbyPosts: [ARNearbyPost] = []
 
     private let locationManager = LocationManager()
     private let db = Firestore.firestore()
@@ -229,6 +329,7 @@ private final class ARCameraViewModel: ObservableObject {
     private var activeSpawn: ARSpawn?
     private var didStart = false
     private var distanceMonitorTask: Task<Void, Never>?
+    private var nearbyPostsMonitorTask: Task<Void, Never>?
     private var userCaptureProgress: [String: ARCaptureProgress] = [:]
     private var comboHits = 0
     private var lastHitAt: Date?
@@ -246,11 +347,13 @@ private final class ARCameraViewModel: ObservableObject {
         Task {
             await loadNearestSpawnAndAssetIfNeeded()
         }
+        startNearbyPostsMonitoring()
     }
 
     func onDisappear() {
         locationManager.stopUpdatingLocation()
         distanceMonitorTask?.cancel()
+        nearbyPostsMonitorTask?.cancel()
         didStart = false
     }
 
@@ -501,6 +604,70 @@ private final class ARCameraViewModel: ObservableObject {
         }
     }
 
+    private func startNearbyPostsMonitoring() {
+        nearbyPostsMonitorTask?.cancel()
+        nearbyPostsMonitorTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.refreshNearbyPosts()
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+            }
+        }
+    }
+
+    @MainActor
+    private func refreshNearbyPosts() async {
+        guard let userLocation = locationManager.lastLocation else {
+            nearbyPosts = []
+            return
+        }
+
+        do {
+            let snapshot = try await db.collection("posts")
+                .whereField("status", isEqualTo: "active")
+                .limit(to: 60)
+                .getDocuments()
+
+            let mapped = snapshot.documents.compactMap { doc -> ARNearbyPost? in
+                let data = doc.data()
+                guard
+                    let content = data["content"] as? String,
+                    let lat = toDouble(data["latitude"]),
+                    let lon = toDouble(data["longitude"])
+                else { return nil }
+
+                let likeCount = intValue(data["likeCount"])
+                let dislikeCount = intValue(data["dislikeCount"])
+                let category = postCategory(from: data["category"])
+                let postLocation = CLLocation(latitude: lat, longitude: lon)
+                let distance = postLocation.distance(from: userLocation)
+
+                let photoPaths = data["photoPaths"] as? [String] ?? []
+                let firstPhotoURL = photoPaths.first.flatMap { path in
+                    try? storageDownloadURL(for: path)
+                }
+
+                return ARNearbyPost(
+                    id: doc.documentID,
+                    message: content,
+                    category: category,
+                    likeCount: likeCount,
+                    dislikeCount: dislikeCount,
+                    distanceMeters: distance,
+                    firstPhotoURL: firstPhotoURL
+                )
+            }
+
+            nearbyPosts = mapped
+                .filter { $0.distanceMeters <= 120 }
+                .sorted { $0.distanceMeters < $1.distanceMeters }
+                .prefix(8)
+                .map { $0 }
+        } catch {
+            // Keep AR usable even if post fetch fails.
+            nearbyPosts = []
+        }
+    }
+
     private func loadModelEntity(from assetPath: String) async throws -> ModelEntity {
         let downloadURL = try storageDownloadURL(for: assetPath)
 
@@ -697,6 +864,21 @@ private final class ARCameraViewModel: ObservableObject {
         return 0
     }
 
+    private func toDouble(_ value: Any?) -> Double? {
+        if let doubleValue = value as? Double { return doubleValue }
+        if let number = value as? NSNumber { return number.doubleValue }
+        if let intValue = value as? Int { return Double(intValue) }
+        return nil
+    }
+
+    private func postCategory(from raw: Any?) -> Post.PostCategory {
+        guard let raw else { return .casual }
+        let text = String(describing: raw).trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.isEmpty { return .casual }
+        let normalized = text.prefix(1).uppercased() + text.dropFirst().lowercased()
+        return Post.PostCategory(rawValue: normalized) ?? .casual
+    }
+
     private func parseFirestoreDate(_ value: Any?) -> Date? {
         if let timestamp = value as? Timestamp {
             return timestamp.dateValue()
@@ -791,6 +973,104 @@ private struct ARSpawn {
             return Int(doubleValue)
         }
         return nil
+    }
+}
+
+private struct ARNearbyPost: Identifiable {
+    let id: String
+    let message: String
+    let category: Post.PostCategory
+    let likeCount: Int
+    let dislikeCount: Int
+    let distanceMeters: Double
+    let firstPhotoURL: URL?
+}
+
+private struct ARNearbyPostCard: View {
+    let post: ARNearbyPost
+
+    private var categoryColor: Color {
+        switch post.category {
+        case .casual:
+            return .teal
+        case .event:
+            return .purple
+        case .question:
+            return .blue
+        case .announcement:
+            return .orange
+        case .arChallenge:
+            return .green
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(post.category.rawValue)
+                    .font(.caption2.weight(.bold))
+                    .foregroundColor(categoryColor)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(categoryColor.opacity(0.18))
+                    .clipShape(Capsule())
+                Spacer()
+            }
+
+            if let url = post.firstPhotoURL {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .empty:
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color.white.opacity(0.2))
+                            ProgressView()
+                        }
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .failure:
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color.white.opacity(0.2))
+                            Image(systemName: "photo")
+                                .foregroundColor(.white.opacity(0.8))
+                        }
+                    @unknown default:
+                        EmptyView()
+                    }
+                }
+                .frame(width: 220, height: 130)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+
+            Text(post.message)
+                .font(.footnote)
+                .foregroundColor(.white)
+                .lineLimit(3)
+
+            HStack(spacing: 12) {
+                Label("\(post.likeCount)", systemImage: "hand.thumbsup.fill")
+                    .font(.caption)
+                    .foregroundColor(.green.opacity(0.9))
+                Label("\(post.dislikeCount)", systemImage: "hand.thumbsdown.fill")
+                    .font(.caption)
+                    .foregroundColor(.orange.opacity(0.9))
+                Spacer()
+                Text(String(format: "%.0fm", post.distanceMeters))
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.white.opacity(0.9))
+            }
+        }
+        .padding(10)
+        .frame(width: 240, alignment: .leading)
+        .background(categoryColor.opacity(0.28))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(categoryColor.opacity(0.6), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 

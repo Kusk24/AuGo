@@ -1,5 +1,6 @@
 import SwiftUI
 import FirebaseAuth
+import FirebaseCore
 
 struct ProfileView: View {
     
@@ -438,6 +439,14 @@ private struct TodayPostCard: View {
             return "Posted \(minutes) minute\(minutes == 1 ? "" : "s") ago"
         }
     }
+
+    private var firstPhotoURL: URL? {
+        guard let photoPath = post.photoPaths.first else { return nil }
+        guard let app = FirebaseApp.app(), let bucket = app.options.storageBucket else { return nil }
+        let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+        guard let escapedPath = photoPath.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
+        return URL(string: "https://firebasestorage.googleapis.com/v0/b/\(bucket)/o/\(escapedPath)?alt=media")
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -465,6 +474,35 @@ private struct TodayPostCard: View {
                         .foregroundColor(.red.opacity(0.85))
                         .font(.system(size: 16, weight: .bold))
                 }
+            }
+
+            if let firstPhotoURL {
+                AsyncImage(url: firstPhotoURL) { phase in
+                    switch phase {
+                    case .empty:
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color(UIColor.systemGray5))
+                            ProgressView()
+                        }
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .failure:
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color(UIColor.systemGray5))
+                            Image(systemName: "photo")
+                                .foregroundColor(.secondary)
+                        }
+                    @unknown default:
+                        EmptyView()
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 170)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
             }
 
             Text(post.content)

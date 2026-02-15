@@ -1,4 +1,5 @@
 import SwiftUI
+import FirebaseCore
 
 struct ClusterPostListView: View {
     let posts: [CampusPost]
@@ -70,6 +71,14 @@ private struct ClusterPostCard: View {
         }
     }
 
+    private var firstPhotoURL: URL? {
+        guard let photoPath = firebasePost?.photoPaths.first else { return nil }
+        guard let app = FirebaseApp.app(), let bucket = app.options.storageBucket else { return nil }
+        let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+        guard let escapedPath = photoPath.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
+        return URL(string: "https://firebasestorage.googleapis.com/v0/b/\(bucket)/o/\(escapedPath)?alt=media")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -102,6 +111,35 @@ private struct ClusterPostCard: View {
                 .foregroundColor(.primary)
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
+
+            if let firstPhotoURL {
+                AsyncImage(url: firstPhotoURL) { phase in
+                    switch phase {
+                    case .empty:
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color(UIColor.systemGray5))
+                            ProgressView()
+                        }
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .failure:
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color(UIColor.systemGray5))
+                            Image(systemName: "photo")
+                                .foregroundColor(.secondary)
+                        }
+                    @unknown default:
+                        EmptyView()
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 150)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
 
             HStack {
                 Text(timeAgo)

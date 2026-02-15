@@ -3,6 +3,7 @@ import FirebaseAuth
 import CoreLocation
 import Combine
 internal import MapKit
+import PhotosUI
 
 struct CreatePostView: View {
     @Binding var isPresentedFromHome: Bool
@@ -16,6 +17,9 @@ struct CreatePostView: View {
     @State private var showAlert = false
     @State private var alertMessage = ""
     @State private var isSubmitting = false
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var selectedPhoto: UIImage?
+    @State private var isLoadingPhotos = false
     
     @StateObject private var locationManager = LocationManager()
 
@@ -161,6 +165,60 @@ struct CreatePostView: View {
                         }
                         .padding(.horizontal, 4)
                     }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Photos")
+                                .font(.subheadline.weight(.semibold))
+                            Spacer()
+                            Text(selectedPhoto == nil ? "0/1" : "1/1")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+
+                        PhotosPicker(
+                            selection: $selectedPhotoItem,
+                            matching: .images
+                        ) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "photo.on.rectangle.angled")
+                                Text(selectedPhoto == nil ? "Add photo" : "Replace photo")
+                            }
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color.Brand.primary.opacity(0.12))
+                            .foregroundColor(Color.Brand.primary)
+                            .clipShape(Capsule())
+                        }
+
+                        if isLoadingPhotos {
+                            ProgressView("Loading photo...")
+                                .font(.caption)
+                        }
+
+                        if let selectedPhoto {
+                            ZStack(alignment: .topTrailing) {
+                                Image(uiImage: selectedPhoto)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 120, height: 120)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                                Button {
+                                    self.selectedPhoto = nil
+                                    self.selectedPhotoItem = nil
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.white)
+                                        .background(Color.black.opacity(0.4))
+                                        .clipShape(Circle())
+                                }
+                                .offset(x: 6, y: -6)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
                 }
                 .padding()
                 .background(
@@ -216,6 +274,11 @@ struct CreatePostView: View {
                 }
             }
         }
+        .onChange(of: selectedPhotoItem) { _, item in
+            Task {
+                await loadSelectedPhoto(from: item)
+            }
+        }
         .alert("Post", isPresented: $showAlert) {
             Button("OK") {
                 if alertMessage.contains("successfully") {
@@ -256,11 +319,13 @@ struct CreatePostView: View {
         isSubmitting = true
         
         do {
+            let photoData = selectedPhoto?.jpegData(compressionQuality: 0.82)
             let postId = try await postManager.createPost(
                 content: message,
                 category: selectedCategory ?? .casual,
                 userId: userId,
-                coordinate: coordinate
+                coordinate: coordinate,
+                photoData: photoData
             )
             
             print("✅ Post created with ID: \(postId) at location: \(coordinate.latitude), \(coordinate.longitude)")
@@ -272,6 +337,24 @@ struct CreatePostView: View {
             alertMessage = "Failed to create post: \(error.localizedDescription)"
             showAlert = true
             isSubmitting = false
+        }
+    }
+
+    @MainActor
+    private func loadSelectedPhoto(from item: PhotosPickerItem?) async {
+        isLoadingPhotos = true
+        defer { isLoadingPhotos = false }
+
+        guard let item else {
+            selectedPhoto = nil
+            return
+        }
+
+        if let data = try? await item.loadTransferable(type: Data.self),
+           let image = UIImage(data: data) {
+            selectedPhoto = image
+        } else {
+            selectedPhoto = nil
         }
     }
 }

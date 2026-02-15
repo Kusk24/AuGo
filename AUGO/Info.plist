@@ -8,6 +8,8 @@
 	<string>AUGO needs your location to show your posts on the campus map and help you discover nearby content.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>AUGO needs camera access to show AR objects at nearby locations.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>AUGO needs access to your photo library so you can attach photos to posts.</string>
 	<key>FirebaseAppDelegateProxyEnabled</key>
 	<false/>
 	<key>UIBackgroundModes</key>
