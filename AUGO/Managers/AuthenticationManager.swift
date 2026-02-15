@@ -389,6 +389,26 @@ class AuthenticationManager: ObservableObject {
         let statusRaw = (data["status"] as? String) ?? "active"
         let status = User.UserStatus(rawValue: statusRaw) ?? .active
         
+        let arCapturedCharacters: [ARCapturedCharacter] = (data["arCapturedCharacters"] as? [[String: Any]] ?? [])
+            .compactMap { entry in
+                guard
+                    let spawnId = entry["spawnId"] as? String,
+                    let title = entry["title"] as? String,
+                    let assetPath = entry["assetPath"] as? String
+                else { return nil }
+
+                return ARCapturedCharacter(
+                    spawnId: spawnId,
+                    title: title,
+                    assetPath: assetPath,
+                    coinValue: entry["coinValue"] as? Int ?? 0,
+                    catchCount: entry["catchCount"] as? Int ?? 0,
+                    catchableTime: entry["catchableTime"] as? Int ?? 1,
+                    lastCapturedAt: parseFirestoreDate(entry["lastCapturedAt"]),
+                    nextCatchAt: parseFirestoreDate(entry["nextCatchAt"])
+                )
+            }
+
         return User(
             id: snapshot.documentID,
             studentID: (data["studentID"] as? String) ?? "",
@@ -405,7 +425,8 @@ class AuthenticationManager: ObservableObject {
             coinBalance: (data["coinBalance"] as? Int) ?? 0,
             dailyPostCount: (data["dailyPostCount"] as? Int) ?? 0,
             dailyPostCountDate: parseFirestoreDate(data["dailyPostCountDate"]),
-            lastCoinGrantDate: parseFirestoreDate(data["lastCoinGrantDate"])
+            lastCoinGrantDate: parseFirestoreDate(data["lastCoinGrantDate"]),
+            arCapturedCharacters: arCapturedCharacters
         )
     }
     
@@ -449,7 +470,19 @@ class AuthenticationManager: ObservableObject {
                 "joinedDate": profile.joinedDate,
                 "score": profile.score,
                 "coinBalance": profile.coinBalance,
-                "dailyPostCount": profile.dailyPostCount
+                "dailyPostCount": profile.dailyPostCount,
+                "arCapturedCharacters": profile.arCapturedCharacters.map {
+                    [
+                        "spawnId": $0.spawnId,
+                        "title": $0.title,
+                        "assetPath": $0.assetPath,
+                        "coinValue": $0.coinValue,
+                        "catchCount": $0.catchCount,
+                        "catchableTime": $0.catchableTime,
+                        "lastCapturedAt": $0.lastCapturedAt.map(Timestamp.init(date:)),
+                        "nextCatchAt": $0.nextCatchAt.map(Timestamp.init(date:))
+                    ].compactMapValues { $0 }
+                }
             ]
             try await db.collection("users").document(uid).setData(data, merge: true)
             var profileWithId = profile

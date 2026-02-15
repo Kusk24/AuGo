@@ -62,6 +62,11 @@ struct ProfileView: View {
             .sorted { $0.date > $1.date }
     }
 
+    private var capturedCharacters: [ARCapturedCharacter] {
+        (authManager.userProfile?.arCapturedCharacters ?? [])
+            .sorted { ($0.lastCapturedAt ?? .distantPast) > ($1.lastCapturedAt ?? .distantPast) }
+    }
+
     var body: some View {
         ZStack {
             Color.Brand.primary.opacity(0.06)
@@ -125,6 +130,7 @@ struct ProfileView: View {
                         if let userId = authManager.user?.uid {
                             print("👤 Setting up real-time listener for user posts: \(userId)")
                             postManager.fetchUserPosts(userId: userId)
+                            authManager.fetchUserProfile(uid: userId)
                             Task {
                                 await postManager.refreshUserEconomy(userId: userId)
                             }
@@ -221,7 +227,21 @@ struct ProfileView: View {
                             .font(.footnote)
                             .foregroundColor(.gray)
 
-                        CapturedCharacterCard()
+                        if capturedCharacters.isEmpty {
+                            Text("No captures yet. Catch AR characters to see them here.")
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                                .padding(.vertical, 8)
+                        } else {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 12) {
+                                    ForEach(capturedCharacters) { capture in
+                                        CapturedCharacterCard(capture: capture)
+                                    }
+                                }
+                                .padding(.vertical, 4)
+                            }
+                        }
                     }
                     .padding(.horizontal, 16)
 
@@ -300,6 +320,7 @@ struct ProfileView: View {
             if let userId = newUserId {
                 print("👤 User changed, re-setting up listener: \(userId)")
                 postManager.fetchUserPosts(userId: userId)
+                authManager.fetchUserProfile(uid: userId)
                 Task {
                     await postManager.refreshUserEconomy(userId: userId)
                 }
@@ -512,9 +533,21 @@ private struct TodayPostCard: View {
     }
 }
 
-import SwiftUI
-
 private struct CapturedCharacterCard: View {
+    let capture: ARCapturedCharacter
+
+    private var footerText: String {
+        if capture.catchCount >= capture.catchableTime {
+            return "Maxed · +\(capture.coinValue) coins"
+        }
+        if let next = capture.nextCatchAt, next > Date() {
+            let formatter = RelativeDateTimeFormatter()
+            formatter.unitsStyle = .short
+            return "Next in \(formatter.localizedString(for: next, relativeTo: Date()))"
+        }
+        return "Ready again · +\(capture.coinValue) coins"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
 
@@ -536,7 +569,7 @@ private struct CapturedCharacterCard: View {
             ZStack {
                 Color(.white)
 
-                Text("Fox · 75 coins")
+                Text("\(capture.title) · \(capture.catchCount)/\(capture.catchableTime)")
                     .font(.subheadline)
                     .foregroundColor(.primary)
             }
@@ -544,6 +577,13 @@ private struct CapturedCharacterCard: View {
             .clipShape(
                 RoundedCorner(radius: 14, corners: [.bottomLeft, .bottomRight])
             )
+
+            Text(footerText)
+                .font(.caption)
+                .foregroundColor(.gray)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity)
+                .background(Color.white)
         }
         .frame(width: 150)
         .shadow(color: .black.opacity(0.06), radius: 4, y: 3)

@@ -5,6 +5,7 @@ import CoreLocation
 import Combine
 import UIKit
 import FirebaseCore
+import FirebaseAuth
 import FirebaseFirestore
 
 struct ARCameraView: View {
@@ -223,15 +224,17 @@ private final class ARCameraViewModel: ObservableObject {
 
     private let locationManager = LocationManager()
     private let db = Firestore.firestore()
+    private let auth = Auth.auth()
 
     private var activeSpawn: ARSpawn?
     private var didStart = false
     private var distanceMonitorTask: Task<Void, Never>?
-    private var cancellables = Set<AnyCancellable>()
+    private var userCaptureProgress: [String: ARCaptureProgress] = [:]
     private var comboHits = 0
     private var lastHitAt: Date?
     private let comboRequiredHits = 3
     private let comboWindowSeconds: TimeInterval = 2.0
+    private var isCaptureProcessing = false
 
     func onAppear() {
         guard !didStart else { return }
@@ -253,6 +256,26 @@ private final class ARCameraViewModel: ObservableObject {
 
     func captureCurrentSpawn() {
         guard let spawn = activeSpawn else { return }
+        guard !isCaptureProcessing else { return }
+
+        switch eligibility(for: spawn, now: Date()) {
+        case .limitReached(let limit):
+            catchInstructionText = "Limit reached (\(limit)/\(limit))"
+            statusText = "This character is fully captured"
+            canRenderModel = false
+            renderSpawnID = nil
+            return
+        case .cooldown(let availableAt):
+            let relative = RelativeDateTimeFormatter().localizedString(for: availableAt, relativeTo: Date())
+            catchInstructionText = "Next catch \(relative)"
+            statusText = "Cooldown active"
+            canRenderModel = false
+            renderSpawnID = nil
+            return
+        case .available:
+            break
+        }
+
         guard let distance = distanceToSpawn(spawn), distance <= spawn.catchRadius else {
             comboHits = 0
             catchInstructionText = String(format: "Too far. Move within %.1f m to catch", spawn.catchRadius)
@@ -278,16 +301,47 @@ private final class ARCameraViewModel: ObservableObject {
 
         comboHits = 0
         lastHitAt = nil
-        renderSpawnID = nil
-        canRenderModel = false
-        statusText = "Captured \(spawn.title)! +\(spawn.coinValue) coins"
-        distanceText = nil
-        catchInstructionText = "Captured"
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        isCaptureProcessing = true
+        statusText = "Saving capture..."
+        catchInstructionText = "Processing"
+
+        Task { @MainActor in
+            do {
+                let result = try await persistCapture(for: spawn)
+                userCaptureProgress[spawn.id] = ARCaptureProgress(count: result.newCount, lastCapturedAt: Date())
+                statusText = "Captured \(spawn.title)! +\(spawn.coinValue) coins"
+                catchInstructionText = result.newCount >= spawn.catchableTime ? "Limit reached for this spawn" : "Captured! Ready again after cooldown"
+                renderSpawnID = nil
+                canRenderModel = false
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                try? await Task.sleep(nanoseconds: 900_000_000)
+                await loadNearestSpawnAndAssetIfNeeded()
+            } catch {
+                if let arError = error as? ARCameraError {
+                    switch arError {
+                    case .captureLimitReached(let limit):
+                        catchInstructionText = "Limit reached (\(limit)/\(limit))"
+                        statusText = "No more catches for this spawn"
+                    case .captureCooldown(let availableAt):
+                        let relative = RelativeDateTimeFormatter().localizedString(for: availableAt, relativeTo: Date())
+                        catchInstructionText = "Next catch \(relative)"
+                        statusText = "Cooldown active"
+                    default:
+                        errorText = "Failed to capture: \(arError.localizedDescription)"
+                        statusText = "Capture failed"
+                    }
+                } else {
+                    errorText = "Failed to capture: \(error.localizedDescription)"
+                    statusText = "Capture failed"
+                }
+            }
+            isCaptureProcessing = false
+        }
     }
 
     @MainActor
     private func loadNearestSpawnAndAssetIfNeeded() async {
+        errorText = nil
         do {
             let spawn = try await fetchNearestActiveSpawn()
             activeSpawn = spawn
@@ -306,6 +360,25 @@ private final class ARCameraViewModel: ObservableObject {
 
             startDistanceMonitoring()
             updateRenderEligibility()
+        } catch let arError as ARCameraError {
+            switch arError {
+            case .noCatchableSpawns:
+                titleText = "AR Hunt"
+                statusText = "No catchable AR characters right now"
+                catchInstructionText = "Try again later"
+                distanceText = nil
+                canRenderModel = false
+                renderSpawnID = nil
+            case .noActiveSpawns:
+                titleText = "AR Hunt"
+                statusText = "No active AR spawns"
+                distanceText = nil
+                canRenderModel = false
+                renderSpawnID = nil
+            default:
+                errorText = "Failed to load AR spawn: \(arError.localizedDescription)"
+                statusText = "Unable to load AR content"
+            }
         } catch {
             errorText = "Failed to load AR spawn: \(error.localizedDescription)"
             statusText = "Unable to load AR content"
@@ -325,11 +398,24 @@ private final class ARCameraViewModel: ObservableObject {
             throw ARCameraError.noActiveSpawns
         }
 
-        guard let userLocation = locationManager.lastLocation else {
-            return spawns[0]
+        userCaptureProgress = try await fetchUserCaptureProgress()
+        let now = Date()
+        let availableSpawns = spawns.filter {
+            if case .available = eligibility(for: $0, now: now) {
+                return true
+            }
+            return false
         }
 
-        let nearest = spawns.min { lhs, rhs in
+        guard !availableSpawns.isEmpty else {
+            throw ARCameraError.noCatchableSpawns
+        }
+
+        guard let userLocation = locationManager.lastLocation else {
+            return availableSpawns[0]
+        }
+
+        let nearest = availableSpawns.min { lhs, rhs in
             let l = lhs.location.distance(from: userLocation)
             let r = rhs.location.distance(from: userLocation)
             return l < r
@@ -352,6 +438,24 @@ private final class ARCameraViewModel: ObservableObject {
             canRenderModel = false
             renderSpawnID = nil
             return
+        }
+
+        switch eligibility(for: spawn, now: Date()) {
+        case .limitReached(let limit):
+            canRenderModel = false
+            renderSpawnID = nil
+            statusText = "Capture limit reached (\(limit)/\(limit))"
+            catchInstructionText = "This spawn is completed"
+            return
+        case .cooldown(let availableAt):
+            canRenderModel = false
+            renderSpawnID = nil
+            let relative = RelativeDateTimeFormatter().localizedString(for: availableAt, relativeTo: Date())
+            statusText = "Cooldown active"
+            catchInstructionText = "Available \(relative)"
+            return
+        case .available:
+            break
         }
 
         guard let distance = distanceToSpawn(spawn) else {
@@ -442,6 +546,183 @@ private final class ARCameraViewModel: ObservableObject {
 
         return url
     }
+
+    private func fetchUserCaptureProgress() async throws -> [String: ARCaptureProgress] {
+        guard let uid = auth.currentUser?.uid else { return [:] }
+        let snapshot = try await db.collection("users").document(uid).getDocument()
+        let map = snapshot.data()?["arCaptureProgress"] as? [String: [String: Any]] ?? [:]
+
+        var output: [String: ARCaptureProgress] = [:]
+        for (spawnID, raw) in map {
+            let count = intValue(raw["count"])
+            let last = parseFirestoreDate(raw["lastCapturedAt"])
+            output[spawnID] = ARCaptureProgress(count: count, lastCapturedAt: last)
+        }
+        return output
+    }
+
+    private func eligibility(for spawn: ARSpawn, now: Date) -> ARCatchEligibility {
+        let progress = userCaptureProgress[spawn.id] ?? ARCaptureProgress(count: 0, lastCapturedAt: nil)
+        if progress.count >= spawn.catchableTime {
+            return .limitReached(limit: spawn.catchableTime)
+        }
+        if progress.count > 0, let last = progress.lastCapturedAt,
+           let next = Calendar.current.date(byAdding: .day, value: spawn.respawnDays, to: last),
+           now < next {
+            return .cooldown(availableAt: next)
+        }
+        return .available
+    }
+
+    private func persistCapture(for spawn: ARSpawn) async throws -> (newCount: Int, newBalance: Int) {
+        guard let uid = auth.currentUser?.uid else {
+            throw ARCameraError.notSignedIn
+        }
+
+        let userRef = db.collection("users").document(uid)
+        let now = Date()
+        let result: Any?
+        do {
+            result = try await db.runTransaction { [self] transaction, errorPointer in
+                let userSnapshot: DocumentSnapshot
+                do {
+                    userSnapshot = try transaction.getDocument(userRef)
+                } catch {
+                    errorPointer?.pointee = error as NSError
+                    return nil
+                }
+
+                let userData = userSnapshot.data() ?? [:]
+                var coinBalance = intValue(userData["coinBalance"])
+
+                var progressMap = userData["arCaptureProgress"] as? [String: [String: Any]] ?? [:]
+                let progressRaw = progressMap[spawn.id] ?? [:]
+                let previousCount = intValue(progressRaw["count"])
+                let lastCapturedAt = parseFirestoreDate(progressRaw["lastCapturedAt"])
+
+                if previousCount >= spawn.catchableTime {
+                    errorPointer?.pointee = NSError(
+                        domain: "ARCapture",
+                        code: 1001,
+                        userInfo: ["limit": spawn.catchableTime]
+                    )
+                    return nil
+                }
+
+                if previousCount > 0,
+                   let lastCapturedAt,
+                   let nextCatchAt = Calendar.current.date(byAdding: .day, value: spawn.respawnDays, to: lastCapturedAt),
+                   now < nextCatchAt {
+                    errorPointer?.pointee = NSError(
+                        domain: "ARCapture",
+                        code: 1002,
+                        userInfo: ["availableAt": Timestamp(date: nextCatchAt)]
+                    )
+                    return nil
+                }
+
+                let newCount = previousCount + 1
+                progressMap[spawn.id] = [
+                    "count": newCount,
+                    "lastCapturedAt": Timestamp(date: now)
+                ]
+
+                coinBalance += spawn.coinValue
+
+                var capturedCharacters = userData["arCapturedCharacters"] as? [[String: Any]] ?? []
+                let nextCatchAt = newCount < spawn.catchableTime
+                    ? Calendar.current.date(byAdding: .day, value: spawn.respawnDays, to: now)
+                    : nil
+
+                var record: [String: Any] = [
+                    "spawnId": spawn.id,
+                    "title": spawn.title,
+                    "assetPath": spawn.assetPath,
+                    "coinValue": spawn.coinValue,
+                    "catchCount": newCount,
+                    "catchableTime": spawn.catchableTime,
+                    "lastCapturedAt": Timestamp(date: now)
+                ]
+                if let nextCatchAt {
+                    record["nextCatchAt"] = Timestamp(date: nextCatchAt)
+                }
+
+                if let idx = capturedCharacters.firstIndex(where: { ($0["spawnId"] as? String) == spawn.id }) {
+                    capturedCharacters[idx] = record
+                } else {
+                    capturedCharacters.append(record)
+                }
+
+                transaction.setData([
+                    "coinBalance": coinBalance,
+                    "arCaptureProgress": progressMap,
+                    "arCapturedCharacters": capturedCharacters,
+                    "updatedAt": Timestamp(date: now)
+                ], forDocument: userRef, merge: true)
+
+                return ["newCount": newCount, "newBalance": coinBalance]
+            }
+        } catch {
+            let nsError = error as NSError
+            if nsError.domain == "ARCapture" {
+                if nsError.code == 1001 {
+                    let limit = nsError.userInfo["limit"] as? Int ?? spawn.catchableTime
+                    throw ARCameraError.captureLimitReached(limit: limit)
+                }
+                if nsError.code == 1002 {
+                    if let timestamp = nsError.userInfo["availableAt"] as? Timestamp {
+                        throw ARCameraError.captureCooldown(availableAt: timestamp.dateValue())
+                    }
+                    throw ARCameraError.captureCooldown(
+                        availableAt: Calendar.current.date(byAdding: .day, value: spawn.respawnDays, to: now) ?? now
+                    )
+                }
+            }
+            throw error
+        }
+
+        guard let payload = result as? [String: Int],
+              let newCount = payload["newCount"],
+              let newBalance = payload["newBalance"] else {
+            throw ARCameraError.captureFailed
+        }
+
+        return (newCount, newBalance)
+    }
+
+    private func intValue(_ value: Any?) -> Int {
+        if let intValue = value as? Int { return intValue }
+        if let number = value as? NSNumber { return number.intValue }
+        if let doubleValue = value as? Double { return Int(doubleValue) }
+        return 0
+    }
+
+    private func parseFirestoreDate(_ value: Any?) -> Date? {
+        if let timestamp = value as? Timestamp {
+            return timestamp.dateValue()
+        }
+        if let date = value as? Date {
+            return date
+        }
+        if let seconds = value as? TimeInterval {
+            return Date(timeIntervalSince1970: seconds)
+        }
+        if let seconds = value as? Int {
+            return Date(timeIntervalSince1970: TimeInterval(seconds))
+        }
+        return nil
+    }
+}
+
+private struct ARCaptureProgress {
+    let count: Int
+    let lastCapturedAt: Date?
+}
+
+private enum ARCatchEligibility {
+    case available
+    case cooldown(availableAt: Date)
+    case limitReached(limit: Int)
 }
 
 private struct ARSpawn {
@@ -454,6 +735,8 @@ private struct ARSpawn {
     let revealRadius: Double
     let catchRadius: Double
     let coinValue: Int
+    let catchableTime: Int
+    let respawnDays: Int
 
     var location: CLLocation {
         CLLocation(latitude: lat, longitude: lon)
@@ -480,6 +763,8 @@ private struct ARSpawn {
         self.revealRadius = revealRadius
         self.catchRadius = catchRadius
         self.coinValue = ARSpawn.toInt(data["coin_value"]) ?? ARSpawn.toInt(data["coinValue"]) ?? 0
+        self.catchableTime = max(1, ARSpawn.toInt(data["catchable_time"]) ?? ARSpawn.toInt(data["catchableTime"]) ?? 1)
+        self.respawnDays = max(1, ARSpawn.toInt(data["respawn_days"]) ?? ARSpawn.toInt(data["respawnDays"]) ?? 1)
     }
 
     private static func toDouble(_ value: Any?) -> Double? {
@@ -511,16 +796,23 @@ private struct ARSpawn {
 
 private enum ARCameraError: LocalizedError {
     case noActiveSpawns
+    case noCatchableSpawns
     case missingStorageBucket
     case invalidAssetPath
     case invalidStorageResponse
     case emptyAssetData
     case assetDownloadFailed(statusCode: Int, body: String?)
+    case notSignedIn
+    case captureLimitReached(limit: Int)
+    case captureCooldown(availableAt: Date)
+    case captureFailed
 
     var errorDescription: String? {
         switch self {
         case .noActiveSpawns:
             return "No active spawns found in Firestore."
+        case .noCatchableSpawns:
+            return "No catchable spawns right now."
         case .missingStorageBucket:
             return "Firebase storage bucket is not configured."
         case .invalidAssetPath:
@@ -534,6 +826,15 @@ private enum ARCameraError: LocalizedError {
                 return "Storage download failed (\(statusCode)): \(body)"
             }
             return "Storage download failed with status \(statusCode)."
+        case .notSignedIn:
+            return "You need to sign in first."
+        case .captureLimitReached(let limit):
+            return "Capture limit reached (\(limit))."
+        case .captureCooldown(let availableAt):
+            let formatter = RelativeDateTimeFormatter()
+            return "Available \(formatter.localizedString(for: availableAt, relativeTo: Date()))."
+        case .captureFailed:
+            return "Failed to persist capture."
         }
     }
 }
