@@ -1178,30 +1178,19 @@ private struct ARNearbyPost: Identifiable {
 private struct ARNearbyPostCard: View {
     let post: ARNearbyPost
 
-    private var categoryColor: Color {
-        switch post.category {
-        case .casual:
-            return .teal
-        case .event:
-            return .purple
-        case .question:
-            return .blue
-        case .announcement:
-            return .orange
-        case .arChallenge:
-            return .green
-        }
+    private var visual: ContentSymbolKit.PostVisual {
+        ContentSymbolKit.postVisual(for: post.category)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(post.category.rawValue)
+                Label(post.category.rawValue, systemImage: visual.symbol)
                     .font(.caption2.weight(.bold))
-                    .foregroundColor(categoryColor)
+                    .foregroundColor(visual.color)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(categoryColor.opacity(0.18))
+                    .background(visual.color.opacity(0.18))
                     .clipShape(Capsule())
                 Spacer()
             }
@@ -1234,10 +1223,14 @@ private struct ARNearbyPostCard: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             }
 
-            Text(post.message)
-                .font(.footnote)
-                .foregroundColor(.white)
-                .lineLimit(3)
+            Label {
+                Text(post.message)
+                    .lineLimit(3)
+            } icon: {
+                Image(systemName: "text.bubble.fill")
+            }
+            .font(.footnote)
+            .foregroundColor(.white)
 
             HStack(spacing: 12) {
                 Label("\(post.likeCount)", systemImage: "hand.thumbsup.fill")
@@ -1254,10 +1247,10 @@ private struct ARNearbyPostCard: View {
         }
         .padding(10)
         .frame(width: 230, alignment: .leading)
-        .background(categoryColor.opacity(0.28))
+        .background(visual.color.opacity(0.28))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(categoryColor.opacity(0.6), lineWidth: 1)
+                .stroke(visual.color.opacity(0.6), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .scaleEffect(post.proximityScale)

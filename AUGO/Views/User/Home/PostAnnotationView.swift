@@ -7,28 +7,15 @@ struct PostPinView: View {
     let post: CampusPost
 
     var body: some View {
-        Image(systemName: "mappin.circle.fill")
-            .font(.system(size: 18))
-            .foregroundColor(colorFor(post.category))
-    }
-
-    private func colorFor(_ category: PostCategory) -> Color {
-        switch category {
-        case .casual:
-            return .teal
-        case .lostFound:
-            return .red
-        case .complaint:
-            return Color(red: 1.0, green: 0.84, blue: 0.0) // yellow
-        case .event:
-            return .purple
-        case .question:
-            return .blue
-        case .announcement:
-            return .orange
-        case .arChallenge:
-            return .green
-        }
+        let visual = ContentSymbolKit.postVisual(for: post.category)
+        return Image(systemName: visual.symbol)
+            .font(.system(size: 17, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: 30, height: 30)
+            .background(visual.color)
+            .clipShape(Circle())
+            .overlay(Circle().stroke(.white, lineWidth: 2))
+            .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
     }
 }
 
@@ -40,16 +27,17 @@ struct PostBubbleView: View {
     var onReport: (() -> Void)? = nil
 
     var body: some View {
+        let visual = ContentSymbolKit.postVisual(for: post.category)
         VStack(spacing: 4) {
             VStack(alignment: .leading, spacing: 8) {
                 // Category badge
                 HStack {
-                    Text(post.category.rawValue)
+                    Label(post.category.rawValue, systemImage: visual.symbol)
                         .font(.caption2.bold())
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(colorFor(post.category).opacity(0.2))
-                        .foregroundColor(colorFor(post.category))
+                        .background(visual.color.opacity(0.2))
+                        .foregroundColor(visual.color)
                         .clipShape(Capsule())
                     
                     Spacer()
@@ -77,7 +65,7 @@ struct PostBubbleView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "person.circle.fill")
                         .font(.caption2)
-                        .foregroundColor(colorFor(post.category))
+                        .foregroundColor(visual.color)
                     
                     Text("Posted by \(post.author)")
                         .font(.caption)
@@ -107,27 +95,8 @@ struct PostBubbleView: View {
                 .frame(width: 12, height: 8)
 
             Image(systemName: "mappin.circle.fill")
-                .font(.system(size: 24))
-                .foregroundColor(colorFor(post.category))
-        }
-    }
-
-    private func colorFor(_ category: PostCategory) -> Color {
-        switch category {
-        case .casual:
-            return .teal
-        case .lostFound:
-            return .red
-        case .complaint:
-            return Color(red: 1.0, green: 0.84, blue: 0.0)
-        case .event:
-            return .purple
-        case .question:
-            return .blue
-        case .announcement:
-            return .orange
-        case .arChallenge:
-            return .green
+                .font(.system(size: 23))
+                .foregroundColor(visual.color)
         }
     }
 

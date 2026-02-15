@@ -373,14 +373,20 @@ struct CampusMapView: View {
     private var arSpawnsMapAnnotations: some MapContent {
         ForEach(arSpawnDots) { dot in
             Annotation("", coordinate: dot.coordinate) {
-                Circle()
-                    .fill(colorForCatchableTime(dot.catchableTime))
-                    .frame(width: dotSize(for: dot.catchableTime), height: dotSize(for: dot.catchableTime))
-                    .overlay(
-                        Circle()
-                            .stroke(Color.white.opacity(0.9), lineWidth: 1.5)
-                    )
-                    .shadow(color: .black.opacity(0.2), radius: 2, y: 1)
+                ZStack {
+                    Circle()
+                        .fill(colorForCatchableTime(dot.catchableTime))
+                        .frame(width: dotSize(for: dot.catchableTime), height: dotSize(for: dot.catchableTime))
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(0.9), lineWidth: 1.5)
+                        )
+                        .shadow(color: .black.opacity(0.2), radius: 2, y: 1)
+
+                    Image(systemName: dot.symbol)
+                        .font(.system(size: dotSize(for: dot.catchableTime) * 0.45, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
                     .accessibilityLabel("\(dot.title), catchable time \(dot.catchableTime)")
             }
         }
@@ -393,12 +399,14 @@ struct CampusMapView: View {
                 let post = cluster.posts[0]
                 Annotation("", coordinate: cluster.coordinate) {
                     VStack(spacing: 4) {
+                        let category = convertPostCategory(post.category)
+                        let visual = ContentSymbolKit.postVisual(for: category)
                         // Pin icon
                         Circle()
-                            .fill(colorForCategory(convertPostCategory(post.category)))
+                            .fill(visual.color)
                             .frame(width: 30, height: 30)
                             .overlay(
-                                Image(systemName: "mappin.circle.fill")
+                                Image(systemName: visual.symbol)
                                     .foregroundColor(.white)
                                     .font(.system(size: 14))
                             )
@@ -411,6 +419,10 @@ struct CampusMapView: View {
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(Color.white)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(visual.color.opacity(0.35), lineWidth: 1)
+                            )
                             .cornerRadius(8)
                             .shadow(radius: 2)
                     }
@@ -457,21 +469,6 @@ struct CampusMapView: View {
         }
     }
     
-    private func colorForCategory(_ category: Post.PostCategory) -> Color {
-        switch category {
-        case .casual:
-            return .teal
-        case .event:
-            return .purple
-        case .question:
-            return .blue
-        case .announcement:
-            return .orange
-        case .arChallenge:
-            return .green
-        }
-    }
-
     private func colorForCatchableTime(_ catchableTime: Int) -> Color {
         let darkBlue = Color(red: 0.10, green: 0.20, blue: 0.65)
         switch catchableTime {
@@ -527,7 +524,8 @@ struct CampusMapView: View {
                         id: doc.documentID,
                         title: (data["title"] as? String) ?? "AR Spawn",
                         coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon),
-                        catchableTime: max(1, self.toInt(data["catchable_time"]) ?? 1)
+                        catchableTime: max(1, self.toInt(data["catchable_time"]) ?? 1),
+                        symbol: ContentSymbolKit.arCharacterSymbol(for: (data["title"] as? String) ?? "AR Spawn")
                     )
                 }
             }
@@ -779,6 +777,7 @@ private struct ARSpawnMapDot: Identifiable {
     let title: String
     let coordinate: CLLocationCoordinate2D
     let catchableTime: Int
+    let symbol: String
 }
 
 private extension Array {

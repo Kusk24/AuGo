@@ -57,6 +57,7 @@
 		C576E48E2F3A6CF30057A27C /* AnnouncerAnnouncementsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C576E48D2F3A6CF30057A27C /* AnnouncerAnnouncementsViewModel.swift */; };
 		C576E4912F3A70F30057A27C /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = C576E4902F3A70F30057A27C /* FirebaseMessaging */; };
 		C576E4932F424C630057A27C /* NotificationListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C576E4922F424C630057A27C /* NotificationListView.swift */; };
+		C576E4952F4262800057A27C /* ContentSymbolKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = C576E4942F4262800057A27C /* ContentSymbolKit.swift */; };
 		C5FAEAD22EE5988200ED4C27 /* Announcer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5FAEAD12EE5988200ED4C27 /* Announcer.swift */; };
 		C5FAEAD42EE5988D00ED4C27 /* Post.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5FAEAD32EE5988D00ED4C27 /* Post.swift */; };
 		C5FAEAD62EE5989400ED4C27 /* Report.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5FAEAD52EE5989400ED4C27 /* Report.swift */; };
@@ -113,6 +114,7 @@
 		C576E48B2F3A6CAA0057A27C /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
 		C576E48D2F3A6CF30057A27C /* AnnouncerAnnouncementsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncerAnnouncementsViewModel.swift; sourceTree = "<group>"; };
 		C576E4922F424C630057A27C /* NotificationListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationListView.swift; sourceTree = "<group>"; };
+		C576E4942F4262800057A27C /* ContentSymbolKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentSymbolKit.swift; sourceTree = "<group>"; };
 		C5FAEAD12EE5988200ED4C27 /* Announcer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Announcer.swift; sourceTree = "<group>"; };
 		C5FAEAD32EE5988D00ED4C27 /* Post.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Post.swift; sourceTree = "<group>"; };
 		C5FAEAD52EE5989400ED4C27 /* Report.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Report.swift; sourceTree = "<group>"; };
@@ -193,6 +195,7 @@
 			children = (
 				C5104C702F188799000656AB /* ContentFilter.swift */,
 				0AB261FC2EE019AD00FA8431 /* Theme.swift */,
+				C576E4942F4262800057A27C /* ContentSymbolKit.swift */,
 				0A48E4732ECCE9A3001A4908 /* BrandColors.swift */,
 			);
 			path = Helpers;
@@ -470,6 +473,7 @@
 				C576E4852F3A6C980057A27C /* CreatePostMapView.swift in Sources */,
 				C576E4862F3A6C980057A27C /* PostClusterView.swift in Sources */,
 				C576E45D2F3A6C910057A27C /* AnnouncerProfileView.swift in Sources */,
+				C576E4952F4262800057A27C /* ContentSymbolKit.swift in Sources */,
 				C576E45E2F3A6C910057A27C /* AnnouncerHomeView.swift in Sources */,
 				0A48E46D2ECCE941001A4908 /* AUGOApp.swift in Sources */,
 				0AB261FD2EE019B200FA8431 /* Theme.swift in Sources */,
