@@ -181,19 +181,61 @@ struct AnnouncementPinView: View {
 
     var body: some View {
         Button(action: onTap) {
-            VStack(spacing: 2) {
+            VStack(spacing: 4) {
+                Image(systemName: symbolName)
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 34, height: 34)
+                    .background(pinColor)
+                    .clipShape(Circle())
+                    .overlay(
+                        Circle().stroke(Color.white, lineWidth: 2)
+                    )
+                    .shadow(color: .black.opacity(0.2), radius: 3, y: 1)
+
                 Text(announcement.department)
                     .font(.caption2.bold())
+                    .lineLimit(1)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(Color.white)
                     .clipShape(Capsule())
-
-                Image(systemName: "megaphone.fill")
-                    .font(.system(size: 30))
-                    .foregroundColor(.purple)
             }
         }
         .buttonStyle(.plain)
+    }
+
+    private var pinColor: Color {
+        switch announcement.status {
+        case .pending:
+            return .orange
+        case .approved:
+            return .blue
+        case .active:
+            return announcement.isUrgent ? .red : .green
+        case .expired:
+            return .gray
+        case .removed:
+            return .pink
+        case .declined, .rejected:
+            return .red
+        }
+    }
+
+    private var symbolName: String {
+        switch announcement.status {
+        case .pending:
+            return "clock.badge.exclamationmark.fill"
+        case .approved:
+            return "checkmark.seal.fill"
+        case .active:
+            return "megaphone.fill"
+        case .expired:
+            return "clock.fill"
+        case .removed:
+            return "slash.circle.fill"
+        case .declined, .rejected:
+            return "xmark.octagon.fill"
+        }
     }
 }

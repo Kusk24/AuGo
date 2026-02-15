@@ -19,9 +19,11 @@ struct StatusBadge: View {
         case .pending: return .orange
         case .approved: return .blue
         case .active: return .green
-        case .declined: return .red
+        case .declined, .rejected: return .red
         case .expired: return .gray
-        default : return .gray
+        case .removed: return .pink
+        @unknown default: return .gray
         }
     }
 }
+

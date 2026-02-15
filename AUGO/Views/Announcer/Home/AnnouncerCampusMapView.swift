@@ -1,5 +1,6 @@
 import SwiftUI
 internal import MapKit
+import FirebaseFirestore
 
 struct AnnouncerCampusMapView: View {
     @Binding var showAnnouncement: Bool
@@ -13,6 +14,8 @@ struct AnnouncerCampusMapView: View {
     @State private var showSingleAnnouncement = false
     @State private var isPresentingCreateAnnouncement = false
     @State private var showNotificationList = false
+    @State private var mapAnnouncements: [Announcement] = []
+    @State private var announcementsListener: ListenerRegistration?
     
     var body: some View {
         ZStack {
@@ -28,8 +31,8 @@ struct AnnouncerCampusMapView: View {
                         // User location
                         UserAnnotation()
                         
-                        // Announcements only
-                        ForEach(announcementCenter.announcements) { ann in
+                        // Show all announcements except rejected/declined.
+                        ForEach(mapAnnouncements) { ann in
                             if let coord = ann.coordinate {
                                 Annotation("", coordinate: coord) {
                                     AnnouncementPinView(announcement: ann) {
@@ -73,6 +76,11 @@ struct AnnouncerCampusMapView: View {
         }
         .onAppear {
             cameraPosition = .region(campusMapViewModel.campusRegion)
+            startAnnouncementsListener()
+        }
+        .onDisappear {
+            announcementsListener?.remove()
+            announcementsListener = nil
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -102,5 +110,68 @@ struct AnnouncerCampusMapView: View {
                 isPresentedFromHome: $isPresentingCreateAnnouncement
             )
         }
+    }
+
+    private func startAnnouncementsListener() {
+        announcementsListener?.remove()
+        announcementsListener = Firestore.firestore()
+            .collection("announcements")
+            .addSnapshotListener { snapshot, error in
+                if let error {
+                    print("❌ Announcer map announcements error: \(error.localizedDescription)")
+                    self.mapAnnouncements = []
+                    return
+                }
+                guard let documents = snapshot?.documents else {
+                    self.mapAnnouncements = []
+                    return
+                }
+
+                self.mapAnnouncements = documents.compactMap(parseAnnouncement)
+                    .filter { $0.status != .rejected && $0.status != .declined }
+                    .sorted { $0.createdAt > $1.createdAt }
+            }
+    }
+
+    private func parseAnnouncement(_ doc: QueryDocumentSnapshot) -> Announcement? {
+        let data = doc.data()
+
+        guard
+            let title = data["title"] as? String,
+            let body = data["body"] as? String,
+            let department = data["department"] as? String,
+            let isUrgent = data["isUrgent"] as? Bool,
+            let createdByUID = data["createdByUID"] as? String,
+            let createdByName = data["createdByName"] as? String,
+            let createdByEmail = data["createdByEmail"] as? String,
+            let statusRaw = data["status"] as? String,
+            let status = AnnouncementStatus(rawValue: statusRaw),
+            let createdAt = (data["createdAt"] as? Timestamp)?.dateValue(),
+            let submittedAt = (data["submittedAt"] as? Timestamp)?.dateValue(),
+            let startDate = (data["startDate"] as? Timestamp)?.dateValue(),
+            let endDate = (data["endDate"] as? Timestamp)?.dateValue()
+        else { return nil }
+
+        return Announcement(
+            id: doc.documentID,
+            title: title,
+            body: body,
+            department: department,
+            isUrgent: isUrgent,
+            link: data["link"] as? String,
+            createdByUID: createdByUID,
+            createdByName: createdByName,
+            createdByEmail: createdByEmail,
+            status: status,
+            createdAt: createdAt,
+            submittedAt: submittedAt,
+            approvedAt: (data["approvedAt"] as? Timestamp)?.dateValue(),
+            rejectedAt: (data["rejectedAt"] as? Timestamp)?.dateValue(),
+            startDate: startDate,
+            endDate: endDate,
+            latitude: data["latitude"] as? Double,
+            longitude: data["longitude"] as? Double,
+            isRead: nil
+        )
     }
 }

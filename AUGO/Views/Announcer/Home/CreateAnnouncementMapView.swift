@@ -26,12 +26,32 @@ struct CreateAnnouncementMapView: View {
     
     var body: some View {
         VStack {
-            
-            Map(position: $cameraPosition) {
-                UserAnnotation()
-            }
-            .onMapCameraChange { context in
-                center = context.region.center
+            ZStack {
+                Map(position: $cameraPosition) {
+                    UserAnnotation()
+                }
+                .onMapCameraChange { context in
+                    center = context.region.center
+                }
+
+                VStack(spacing: 8) {
+                    Spacer()
+
+                    Image(systemName: "mappin.and.ellipse")
+                        .font(.system(size: 34, weight: .bold))
+                        .foregroundStyle(Color.Brand.primary)
+                        .shadow(color: .black.opacity(0.25), radius: 3, y: 2)
+
+                    if let center {
+                        Text(String(format: "Lat %.5f, Lon %.5f", center.latitude, center.longitude))
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(.ultraThinMaterial)
+                            .clipShape(Capsule())
+                    }
+                    Spacer()
+                }
             }
             
             Button {
@@ -41,11 +61,12 @@ struct CreateAnnouncementMapView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(isSubmitting)
+            .disabled(isSubmitting || center == nil)
             .padding()
         }
         .onAppear {
             cameraPosition = .region(campusMapViewModel.campusRegion)
+            center = campusMapViewModel.campusRegion.center
         }
         .alert("Announcement", isPresented: $showAlert) {
             Button("OK") {

@@ -3,6 +3,7 @@ import SwiftUI
 struct AnnouncerProfileView: View {
     
     @EnvironmentObject var authManager: AuthenticationManager
+    @EnvironmentObject var notificationManager: NotificationManager
     
     var body: some View {
         ScrollView {
@@ -29,6 +30,21 @@ struct AnnouncerProfileView: View {
                     InfoRow(title: "Role", value: announcer.role)
                     InfoRow(title: "Email", value: announcer.email)
                     InfoRow(title: "Phone", value: announcer.phone)
+                }
+                .padding()
+                .background(Color(.systemGray6))
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+
+                HStack {
+                    Text("Notification Preferences")
+                        .font(.subheadline)
+                    Spacer()
+                    Toggle("", isOn: Binding(
+                        get: { notificationManager.notificationsEnabled },
+                        set: { notificationManager.setNotificationsEnabled($0) }
+                    ))
+                    .labelsHidden()
+                    .tint(Color.Brand.primary)
                 }
                 .padding()
                 .background(Color(.systemGray6))

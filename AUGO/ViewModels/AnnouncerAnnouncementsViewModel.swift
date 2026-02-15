@@ -82,6 +82,12 @@ final class AnnouncerAnnouncementsViewModel: ObservableObject {
     }
     
     var filteredAnnouncements: [Announcement] {
+        if selectedFilter == .scheduled {
+            let now = Date()
+            return announcements.filter {
+                ($0.status == .approved || $0.status == .pending) && $0.startDate > now
+            }
+        }
         if selectedFilter == .declined {
             return announcements.filter { $0.status == .declined || $0.status == .rejected }
         }

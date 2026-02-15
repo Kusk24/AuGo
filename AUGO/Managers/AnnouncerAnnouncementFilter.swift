@@ -3,10 +3,12 @@ import Swift
 enum AnnouncerAnnouncementFilter: String, CaseIterable, Identifiable {
     case all = "All"
     case pending = "Pending"
+    case scheduled = "Scheduled"
     case approved = "Approved"
     case active = "Active"
     case declined = "Declined"
     case expired = "Expired"
+    case removed = "Removed"
     
     var id: String { rawValue }
     
@@ -17,6 +19,8 @@ enum AnnouncerAnnouncementFilter: String, CaseIterable, Identifiable {
             return nil
         case .pending:
             return .pending
+        case .scheduled:
+            return .approved
         case .approved:
             return .approved
         case .active:
@@ -25,6 +29,8 @@ enum AnnouncerAnnouncementFilter: String, CaseIterable, Identifiable {
             return .declined
         case .expired:
             return .expired
+        case .removed:
+            return .removed
         }
     }
 }

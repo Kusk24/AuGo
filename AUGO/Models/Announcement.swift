@@ -8,6 +8,7 @@ enum AnnouncementStatus: String, Codable {
     case rejected
     case active
     case expired
+    case removed
 }
 
 struct Announcement: Identifiable, Codable {
