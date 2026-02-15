@@ -57,7 +57,7 @@ struct ARCameraView: View {
                 if let rewardInfoText = viewModel.rewardInfoText {
                     Text(rewardInfoText)
                         .font(.footnote.weight(.semibold))
-                        .foregroundColor(Color.Brand.coin)
+                        .foregroundColor(viewModel.contentMode == .posts ? .white : Color.Brand.coin)
                 }
 
                 if viewModel.contentMode == .character && viewModel.canRenderModel {
@@ -359,6 +359,7 @@ private final class ARCameraViewModel: ObservableObject {
 
     private var activeSpawn: ARSpawn?
     private var didStart = false
+    private var loadSpawnTask: Task<Void, Never>?
     private var distanceMonitorTask: Task<Void, Never>?
     private var nearbyPostsMonitorTask: Task<Void, Never>?
     private var userCaptureProgress: [String: ARCaptureProgress] = [:]
@@ -382,6 +383,7 @@ private final class ARCameraViewModel: ObservableObject {
 
     func onDisappear() {
         locationManager.stopUpdatingLocation()
+        loadSpawnTask?.cancel()
         distanceMonitorTask?.cancel()
         nearbyPostsMonitorTask?.cancel()
         didStart = false
@@ -394,20 +396,23 @@ private final class ARCameraViewModel: ObservableObject {
             nearbyPostsMonitorTask?.cancel()
             nearbyPosts = []
             smoothedDistanceMeters = nil
-            Task { @MainActor in
+            loadSpawnTask?.cancel()
+            loadSpawnTask = Task { @MainActor in
                 await loadNearestSpawnAndAssetIfNeeded()
             }
         case .posts:
+            loadSpawnTask?.cancel()
             distanceMonitorTask?.cancel()
             canRenderModel = false
             renderSpawnID = nil
             modelEntity = nil
-            rewardInfoText = nil
+            activeSpawn = nil
+            rewardInfoText = "Nearest: none"
             distanceText = nil
             smoothedDistanceMeters = nil
             titleText = "Nearby Posts"
-            statusText = "Showing floating posts within 30m"
-            catchInstructionText = "Switch to Character mode to catch AR objects"
+            statusText = "Posts in range: 0"
+            catchInstructionText = ""
             startNearbyPostsMonitoring()
         }
     }
@@ -610,6 +615,7 @@ private final class ARCameraViewModel: ObservableObject {
     }
 
     private func updateRenderEligibility() {
+        guard contentMode == .character else { return }
         guard let spawn = activeSpawn else {
             canRenderModel = false
             renderSpawnID = nil
@@ -756,9 +762,25 @@ private final class ARCameraViewModel: ObservableObject {
                 .sorted { $0.distanceMeters < $1.distanceMeters }
                 .prefix(8)
                 .map { $0 }
+
+            titleText = "Nearby Posts"
+            statusText = "Posts in range: \(nearbyPosts.count)"
+            if let nearest = nearbyPosts.first {
+                let caption = nearest.message.trimmingCharacters(in: .whitespacesAndNewlines)
+                let preview = caption.isEmpty ? "Untitled post" : String(caption.prefix(36))
+                rewardInfoText = "Nearest: \(preview)"
+                distanceText = String(format: "Distance: %.1f m", nearest.distanceMeters)
+            } else {
+                rewardInfoText = "Nearest: none"
+                distanceText = nil
+            }
         } catch {
             // Keep AR usable even if post fetch fails.
             nearbyPosts = []
+            titleText = "Nearby Posts"
+            statusText = "Posts in range: 0"
+            rewardInfoText = "Nearest: none"
+            distanceText = nil
         }
     }
 

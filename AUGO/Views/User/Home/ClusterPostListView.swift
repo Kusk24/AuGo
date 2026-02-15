@@ -4,7 +4,10 @@ import FirebaseCore
 struct ClusterPostListView: View {
     let posts: [CampusPost]
     let postLookup: [UUID: Post]
+    let postLookupByDocumentID: [String: Post]
     let onPostSelected: (CampusPost) -> Void
+    let onLike: (CampusPost) -> Void
+    let onDislike: (CampusPost) -> Void
 
     private var sortedPosts: [CampusPost] {
         posts.sorted { $0.createdAt > $1.createdAt }
@@ -26,15 +29,14 @@ struct ClusterPostListView: View {
             ScrollView {
                 LazyVStack(spacing: 12) {
                     ForEach(sortedPosts) { post in
-                        Button {
-                            onPostSelected(post)
-                        } label: {
-                            ClusterPostCard(
-                                post: post,
-                                firebasePost: postLookup[post.id]
-                            )
-                        }
-                        .buttonStyle(.plain)
+                        let resolvedFirebasePost = post.sourcePostID.flatMap { postLookupByDocumentID[$0] } ?? postLookup[post.id]
+                        ClusterPostCard(
+                            post: post,
+                            firebasePost: resolvedFirebasePost,
+                            onSelect: { onPostSelected(post) },
+                            onLike: { onLike(post) },
+                            onDislike: { onDislike(post) }
+                        )
                     }
                 }
                 .padding(.horizontal, 16)
@@ -48,6 +50,9 @@ struct ClusterPostListView: View {
 private struct ClusterPostCard: View {
     let post: CampusPost
     let firebasePost: Post?
+    let onSelect: () -> Void
+    let onLike: () -> Void
+    let onDislike: () -> Void
 
     private var timeAgo: String {
         let interval = Date().timeIntervalSince(post.createdAt)
@@ -155,23 +160,29 @@ private struct ClusterPostCard: View {
                 Spacer()
 
                 HStack(spacing: 14) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.up")
-                            .font(.caption.weight(.bold))
-                            .foregroundColor(.purple)
-                        Text("\(firebasePost?.likeCount ?? 0)")
-                            .font(.subheadline)
-                            .foregroundColor(.primary)
+                    Button(action: onLike) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.up")
+                                .font(.caption.weight(.bold))
+                                .foregroundColor(.purple)
+                            Text("\(firebasePost?.likeCount ?? 0)")
+                                .font(.subheadline)
+                                .foregroundColor(.primary)
+                        }
                     }
+                    .buttonStyle(.plain)
 
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.down")
-                            .font(.caption.weight(.bold))
-                            .foregroundColor(.black)
-                        Text("\(firebasePost?.dislikeCount ?? 0)")
-                            .font(.subheadline)
-                            .foregroundColor(.primary)
+                    Button(action: onDislike) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.down")
+                                .font(.caption.weight(.bold))
+                                .foregroundColor(.black)
+                            Text("\(firebasePost?.dislikeCount ?? 0)")
+                                .font(.subheadline)
+                                .foregroundColor(.primary)
+                        }
                     }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -185,5 +196,7 @@ private struct ClusterPostCard: View {
                 )
                 .shadow(color: .black.opacity(0.06), radius: 4, y: 3)
         )
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onSelect)
     }
 }

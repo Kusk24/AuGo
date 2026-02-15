@@ -27,6 +27,7 @@ enum PostCategory: String, CaseIterable, Identifiable {
 
 struct CampusPost: Identifiable {
     let id = UUID()
+    let sourcePostID: String?
     let author: String
     let message: String
     let coordinate: CLLocationCoordinate2D

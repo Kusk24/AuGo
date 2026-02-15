@@ -36,8 +36,10 @@ struct CampusMapView: View {
     
     @State private var selectedPostID: UUID? = nil
     @State private var postMapping: [UUID: Post] = [:]
+    @State private var postByDocumentID: [String: Post] = [:]
     @State private var userDisplayNames: [String: String] = [:]
     @State private var pendingSelectedPost: CampusPost?
+    @State private var selectedPostDocumentID: String?
     
     @State private var showReportAlert = false
     @State private var postToReport: Post?    
@@ -69,6 +71,10 @@ struct CampusMapView: View {
 
         displayClusters = clusters
         postMapping = mapping
+        postByDocumentID = Dictionary(uniqueKeysWithValues: filtered.compactMap { post in
+            guard let id = post.id else { return nil }
+            return (id, post)
+        })
         print("🗺️ Updated postMapping with \(mapping.count) entries")
         print("🔑 Mapping keys: \(mapping.keys.map { $0.uuidString })")
     }
@@ -86,6 +92,7 @@ struct CampusMapView: View {
             let baseLoc = CLLocation(latitude: base.latitude, longitude: base.longitude)
             
             let campusPost = CampusPost(
+                sourcePostID: base.id,
                 author: displayName(for: base.userId),
                 message: base.content,
                 coordinate: base.coordinate,
@@ -100,6 +107,7 @@ struct CampusMapView: View {
                 let loc = CLLocation(latitude: post.latitude, longitude: post.longitude)
                 if baseLoc.distance(from: loc) < radius {
                     let cp = CampusPost(
+                        sourcePostID: post.id,
                         author: displayName(for: post.userId),
                         message: post.content,
                         coordinate: post.coordinate,
@@ -322,7 +330,7 @@ struct CampusMapView: View {
                 selectedPostID = (selectedPostID == post.id) ? nil : post.id
             },
             onReport: {
-                if let firebasePost = postMapping[post.id] {
+                if let firebasePost = firebasePost(for: post) {
                     postToReport = firebasePost
                     showReportAlert = true
                 }
@@ -408,6 +416,7 @@ struct CampusMapView: View {
                     .onTapGesture {
                         print("📍 Tapped post: \(post.message)")
                         selectedPost = post
+                        selectedPostDocumentID = post.sourcePostID
                         activeSheet = .postDetail
                     }
                 }
@@ -544,6 +553,13 @@ struct CampusMapView: View {
         if mins < 60 { return "\(mins)m ago" }
         return "\(mins/60)h ago"
     }
+
+    private func firebasePost(for campusPost: CampusPost) -> Post? {
+        if let sourcePostID = campusPost.sourcePostID {
+            return postByDocumentID[sourcePostID]
+        }
+        return postMapping[campusPost.id]
+    }
     
     @MapContentBuilder
     private var announcementsMapAnnotations: some MapContent {
@@ -622,6 +638,7 @@ struct CampusMapView: View {
             if let pendingPost = pendingSelectedPost {
                 DispatchQueue.main.async {
                     selectedPost = pendingPost
+                    selectedPostDocumentID = pendingPost.sourcePostID
                     pendingSelectedPost = nil
                     activeSheet = .postDetail
                 }
@@ -636,10 +653,30 @@ struct CampusMapView: View {
                 }
             case .cluster:
                 if let cluster = selectedCluster {
-                    ClusterPostListView(posts: cluster.posts, postLookup: postMapping) { selectedPost in
-                        pendingSelectedPost = selectedPost
-                        activeSheet = nil
-                    }
+                    ClusterPostListView(
+                        posts: cluster.posts,
+                        postLookup: postMapping,
+                        postLookupByDocumentID: postByDocumentID,
+                        onPostSelected: { selectedPost in
+                            pendingSelectedPost = selectedPost
+                            selectedPostDocumentID = selectedPost.sourcePostID
+                            activeSheet = nil
+                        },
+                        onLike: { campusPost in
+                            guard let postId = campusPost.sourcePostID,
+                                  let userId = authManager.user?.uid else { return }
+                            Task {
+                                try? await postManager.likePost(postId, userId: userId)
+                            }
+                        },
+                        onDislike: { campusPost in
+                            guard let postId = campusPost.sourcePostID,
+                                  let userId = authManager.user?.uid else { return }
+                            Task {
+                                try? await postManager.dislikePost(postId, userId: userId)
+                            }
+                        }
+                    )
                 } else {
                     ProgressView().padding()
                 }
@@ -647,12 +684,12 @@ struct CampusMapView: View {
                 if let post = selectedPost {
                     PostDetailCardView(
                         post: post,
-                        firebasePost: postMapping[post.id],
+                        firebasePost: selectedPostDocumentID.flatMap { postByDocumentID[$0] } ?? firebasePost(for: post),
                         onReport: {
                             print("🚨 Report button tapped")
                             print("🔑 Looking for post ID: \(post.id)")
                             print("🔑 Available mapping keys: \(postMapping.keys.map { $0.uuidString })")
-                            if let firebasePost = postMapping[post.id] {
+                            if let firebasePost = selectedPostDocumentID.flatMap({ postByDocumentID[$0] }) ?? firebasePost(for: post) {
                                 print("✅ showReportAlert set to true")
                                 print("🧾 postToReport: \(firebasePost.id ?? "nil")")
                                 postToReport = firebasePost
@@ -662,16 +699,14 @@ struct CampusMapView: View {
                             }
                         },
                         onLike: {
-                            guard let firebasePost = postMapping[post.id],
-                                  let postId = firebasePost.id,
+                            guard let postId = selectedPostDocumentID ?? post.sourcePostID,
                                   let userId = authManager.user?.uid else { return }
                             Task {
                                 try? await postManager.likePost(postId, userId: userId)
                             }
                         },
                         onDislike: {
-                            guard let firebasePost = postMapping[post.id],
-                                  let postId = firebasePost.id,
+                            guard let postId = selectedPostDocumentID ?? post.sourcePostID,
                                   let userId = authManager.user?.uid else { return }
                             Task {
                                 try? await postManager.dislikePost(postId, userId: userId)
@@ -695,6 +730,7 @@ struct CampusMapView: View {
                 selectedPostID = nil
                 if newValue == nil {
                     selectedPost = nil
+                    selectedPostDocumentID = nil
                 }
             }
         }
