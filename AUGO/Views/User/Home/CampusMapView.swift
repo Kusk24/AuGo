@@ -48,6 +48,8 @@ struct CampusMapView: View {
     // MARK: - FILTER
     @State private var selectedCategories: Set<Post.PostCategory> = Set(Post.PostCategory.allCases)
     @State private var displayClusters: [PostCluster] = []
+    @State private var arSpawnDots: [ARSpawnMapDot] = []
+    @State private var arSpawnsListener: ListenerRegistration?
     
     private func updateClustersAndMapping(posts: [Post]? = nil) {
         let postsToUse = posts ?? postManager.allPosts
@@ -346,6 +348,7 @@ struct CampusMapView: View {
     private var mapView: some View {
         Map(position: $cameraPosition) {
             UserAnnotation()
+            arSpawnsMapAnnotations
             postsMapAnnotations
             announcementsMapAnnotations
         }
@@ -357,6 +360,23 @@ struct CampusMapView: View {
         .clipShape(RoundedRectangle(cornerRadius: 24))
     }
     
+    @MapContentBuilder
+    private var arSpawnsMapAnnotations: some MapContent {
+        ForEach(arSpawnDots) { dot in
+            Annotation("", coordinate: dot.coordinate) {
+                Circle()
+                    .fill(colorForCatchableTime(dot.catchableTime))
+                    .frame(width: dotSize(for: dot.catchableTime), height: dotSize(for: dot.catchableTime))
+                    .overlay(
+                        Circle()
+                            .stroke(Color.white.opacity(0.9), lineWidth: 1.5)
+                    )
+                    .shadow(color: .black.opacity(0.2), radius: 2, y: 1)
+                    .accessibilityLabel("\(dot.title), catchable time \(dot.catchableTime)")
+            }
+        }
+    }
+
     @MapContentBuilder
     private var postsMapAnnotations: some MapContent {
         ForEach(displayClusters) { cluster in
@@ -441,6 +461,82 @@ struct CampusMapView: View {
             return .green
         }
     }
+
+    private func colorForCatchableTime(_ catchableTime: Int) -> Color {
+        let darkBlue = Color(red: 0.10, green: 0.20, blue: 0.65)
+        switch catchableTime {
+        case 1:
+            return .mint
+        case 2...20:
+            return darkBlue
+        case 21...79:
+            return .green
+        case 80...150:
+            return .pink
+        case 151...300:
+            return .red
+        case 301...:
+            return .gray
+        default:
+            // Invalid/edge fallback.
+            return .gray
+        }
+    }
+
+    private func dotSize(for catchableTime: Int) -> CGFloat {
+        // Keep the dot visually simple and stable: minimum 5, capped at >300.
+        let clamped = min(max(catchableTime, 5), 300)
+        let normalized = Double(clamped - 5) / Double(300 - 5)
+        return CGFloat(10.0 + (normalized * 12.0))
+    }
+
+    private func startARSpawnsListener() {
+        arSpawnsListener?.remove()
+        arSpawnsListener = Firestore.firestore()
+            .collection("ar_spawns")
+            .whereField("isActive", isEqualTo: true)
+            .addSnapshotListener { snapshot, error in
+                if let error {
+                    print("❌ Error listening ar_spawns: \(error.localizedDescription)")
+                    return
+                }
+
+                guard let documents = snapshot?.documents else {
+                    self.arSpawnDots = []
+                    return
+                }
+
+                self.arSpawnDots = documents.compactMap { doc in
+                    let data = doc.data()
+                    guard
+                        let lat = self.toDouble(data["latitude"]),
+                        let lon = self.toDouble(data["longitude"])
+                    else { return nil }
+
+                    return ARSpawnMapDot(
+                        id: doc.documentID,
+                        title: (data["title"] as? String) ?? "AR Spawn",
+                        coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon),
+                        catchableTime: max(1, self.toInt(data["catchable_time"]) ?? 1)
+                    )
+                }
+            }
+    }
+
+    private func toDouble(_ value: Any?) -> Double? {
+        if let doubleValue = value as? Double { return doubleValue }
+        if let intValue = value as? Int { return Double(intValue) }
+        if let number = value as? NSNumber { return number.doubleValue }
+        return nil
+    }
+
+    private func toInt(_ value: Any?) -> Int? {
+        if let intValue = value as? Int { return intValue }
+        if let doubleValue = value as? Double { return Int(doubleValue) }
+        if let number = value as? NSNumber { return number.intValue }
+        if let stringValue = value as? String { return Int(stringValue) }
+        return nil
+    }
     
     private func relativeTime(from date: Date) -> String {
         let mins = Int(-date.timeIntervalSinceNow / 60)
@@ -502,6 +598,11 @@ struct CampusMapView: View {
             print("📊 Current state: \(postManager.allPosts.count) posts in PostManager")
             print("🎯 Selected categories: \(selectedCategories.map { $0.rawValue })")
             updateClustersAndMapping()
+            startARSpawnsListener()
+        }
+        .onDisappear {
+            arSpawnsListener?.remove()
+            arSpawnsListener = nil
         }
         .onReceive(postManager.$allPosts) { newValue in
             print("📬 Received posts update: \(newValue.count) posts")
@@ -630,6 +731,13 @@ struct CampusMapView: View {
             }
         }
     }
+}
+
+private struct ARSpawnMapDot: Identifiable {
+    let id: String
+    let title: String
+    let coordinate: CLLocationCoordinate2D
+    let catchableTime: Int
 }
 
 private extension Array {
