@@ -574,16 +574,24 @@ private struct TodayPostCard: View {
 private struct CapturedCharacterCard: View {
     let capture: ARCapturedCharacter
 
+    private var previewURL: URL? {
+        guard let previewPath = capture.previewImagePath else { return nil }
+        guard let app = FirebaseApp.app(), let bucket = app.options.storageBucket else { return nil }
+        let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+        guard let escapedPath = previewPath.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
+        return URL(string: "https://firebasestorage.googleapis.com/v0/b/\(bucket)/o/\(escapedPath)?alt=media")
+    }
+
     private var footerText: String {
         if capture.catchCount >= capture.catchableTime {
-            return "Maxed · +\(capture.coinValue) coins"
+            return "Maxed · +\(capture.coinValue) coins · +\(capture.pointValue) pts"
         }
         if let next = capture.nextCatchAt, next > Date() {
             let formatter = RelativeDateTimeFormatter()
             formatter.unitsStyle = .short
             return "Next in \(formatter.localizedString(for: next, relativeTo: Date()))"
         }
-        return "Ready again · +\(capture.coinValue) coins"
+        return "Ready again · +\(capture.coinValue) coins · +\(capture.pointValue) pts"
     }
 
     var body: some View {
@@ -593,10 +601,25 @@ private struct CapturedCharacterCard: View {
             ZStack {
                 Color(UIColor.systemGray6)
 
-                Image("Foxy")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 80, height: 80)
+                if let previewURL {
+                    AsyncImage(url: previewURL) { phase in
+                        switch phase {
+                        case .empty:
+                            ProgressView()
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFit()
+                                .padding(10)
+                        case .failure:
+                            placeholderView
+                        @unknown default:
+                            placeholderView
+                        }
+                    }
+                } else {
+                    placeholderView
+                }
             }
             .frame(height: 130)
             .clipShape(
@@ -625,6 +648,17 @@ private struct CapturedCharacterCard: View {
         }
         .frame(width: 150)
         .shadow(color: .black.opacity(0.06), radius: 4, y: 3)
+    }
+
+    private var placeholderView: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "cube.box.fill")
+                .font(.system(size: 30))
+                .foregroundColor(Color.Brand.primary.opacity(0.8))
+            Text(String(capture.title.prefix(1)).uppercased())
+                .font(.headline)
+                .foregroundColor(.secondary)
+        }
     }
 }
 

@@ -401,7 +401,9 @@ class AuthenticationManager: ObservableObject {
                     spawnId: spawnId,
                     title: title,
                     assetPath: assetPath,
+                    previewImagePath: entry["previewImagePath"] as? String,
                     coinValue: entry["coinValue"] as? Int ?? 0,
+                    pointValue: entry["pointValue"] as? Int ?? 0,
                     catchCount: entry["catchCount"] as? Int ?? 0,
                     catchableTime: entry["catchableTime"] as? Int ?? 1,
                     lastCapturedAt: parseFirestoreDate(entry["lastCapturedAt"]),
@@ -477,9 +479,13 @@ class AuthenticationManager: ObservableObject {
                         "title": $0.title,
                         "assetPath": $0.assetPath,
                         "coinValue": $0.coinValue,
+                        "pointValue": $0.pointValue,
                         "catchCount": $0.catchCount,
                         "catchableTime": $0.catchableTime
                     ]
+                    if let previewImagePath = $0.previewImagePath {
+                        payload["previewImagePath"] = previewImagePath
+                    }
                     if let lastCapturedAt = $0.lastCapturedAt {
                         payload["lastCapturedAt"] = Timestamp(date: lastCapturedAt)
                     }

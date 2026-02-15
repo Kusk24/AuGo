@@ -8,7 +8,9 @@ struct ARCapturedCharacter: Codable, Identifiable {
     let spawnId: String
     let title: String
     let assetPath: String
+    let previewImagePath: String?
     let coinValue: Int
+    let pointValue: Int
     let catchCount: Int
     let catchableTime: Int
     let lastCapturedAt: Date?

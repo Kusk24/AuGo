@@ -39,8 +39,8 @@ struct ARCameraView: View {
                         .foregroundColor(.white.opacity(0.9))
                 }
 
-                if let coinValueText = viewModel.coinValueText {
-                    Text(coinValueText)
+                if let rewardInfoText = viewModel.rewardInfoText {
+                    Text(rewardInfoText)
                         .font(.footnote.weight(.semibold))
                         .foregroundColor(Color.Brand.coin)
                 }
@@ -318,7 +318,7 @@ private final class ARCameraViewModel: ObservableObject {
     @Published var canRenderModel = false
     @Published var modelEntity: ModelEntity?
     @Published var renderSpawnID: String?
-    @Published var coinValueText: String?
+    @Published var rewardInfoText: String?
     @Published var catchInstructionText = "Get inside catch radius to start combo"
     @Published var nearbyPosts: [ARNearbyPost] = []
 
@@ -412,7 +412,7 @@ private final class ARCameraViewModel: ObservableObject {
             do {
                 let result = try await persistCapture(for: spawn)
                 userCaptureProgress[spawn.id] = ARCaptureProgress(count: result.newCount, lastCapturedAt: Date())
-                statusText = "Captured \(spawn.title)! +\(spawn.coinValue) coins"
+                statusText = "Captured \(spawn.title)! +\(spawn.coinValue) coins, +\(spawn.pointValue) points"
                 catchInstructionText = result.newCount >= spawn.catchableTime ? "Limit reached for this spawn" : "Captured! Ready again after cooldown"
                 renderSpawnID = nil
                 canRenderModel = false
@@ -449,7 +449,7 @@ private final class ARCameraViewModel: ObservableObject {
             let spawn = try await fetchNearestActiveSpawn()
             activeSpawn = spawn
             titleText = spawn.title
-            coinValueText = "+\(spawn.coinValue) coins"
+            rewardInfoText = "Nearest: \(spawn.title) • +\(spawn.coinValue) coins • +\(spawn.pointValue) points"
 
             let currentDistance = distanceToSpawn(spawn)
             if let currentDistance {
@@ -469,12 +469,14 @@ private final class ARCameraViewModel: ObservableObject {
                 titleText = "AR Hunt"
                 statusText = "No catchable AR characters right now"
                 catchInstructionText = "Try again later"
+                rewardInfoText = nil
                 distanceText = nil
                 canRenderModel = false
                 renderSpawnID = nil
             case .noActiveSpawns:
                 titleText = "AR Hunt"
                 statusText = "No active AR spawns"
+                rewardInfoText = nil
                 distanceText = nil
                 canRenderModel = false
                 renderSpawnID = nil
@@ -549,6 +551,7 @@ private final class ARCameraViewModel: ObservableObject {
             renderSpawnID = nil
             statusText = "Capture limit reached (\(limit)/\(limit))"
             catchInstructionText = "This spawn is completed"
+            rewardInfoText = nil
             return
         case .cooldown(let availableAt):
             canRenderModel = false
@@ -556,6 +559,7 @@ private final class ARCameraViewModel: ObservableObject {
             let relative = RelativeDateTimeFormatter().localizedString(for: availableAt, relativeTo: Date())
             statusText = "Cooldown active"
             catchInstructionText = "Available \(relative)"
+            rewardInfoText = "Nearest: \(spawn.title) • +\(spawn.coinValue) coins • +\(spawn.pointValue) points"
             return
         case .available:
             break
@@ -575,8 +579,9 @@ private final class ARCameraViewModel: ObservableObject {
             canRenderModel = true
             renderSpawnID = spawn.id
             statusText = "Spawn unlocked"
+            rewardInfoText = "Nearest: \(spawn.title) • +\(spawn.coinValue) coins • +\(spawn.pointValue) points"
             if distance <= spawn.catchRadius {
-                catchInstructionText = "Tap 3x quickly to catch (+\(spawn.coinValue) coins)"
+                catchInstructionText = "Tap 3x quickly to catch (+\(spawn.coinValue) coins, +\(spawn.pointValue) pts)"
             } else {
                 let need = max(distance - spawn.catchRadius, 0)
                 catchInstructionText = String(format: "Move %.1f m closer to start 3-hit combo", need)
@@ -588,6 +593,7 @@ private final class ARCameraViewModel: ObservableObject {
             lastHitAt = nil
             let remaining = max(distance - spawn.revealRadius, 0)
             statusText = String(format: "Move %.1f m closer to reveal", remaining)
+            rewardInfoText = "Nearest: \(spawn.title) • +\(spawn.coinValue) coins • +\(spawn.pointValue) points"
             catchInstructionText = "Hidden until reveal radius"
         }
     }
@@ -761,6 +767,7 @@ private final class ARCameraViewModel: ObservableObject {
 
                 let userData = userSnapshot.data() ?? [:]
                 var coinBalance = intValue(userData["coinBalance"])
+                var score = intValue(userData["score"])
 
                 var progressMap = userData["arCaptureProgress"] as? [String: [String: Any]] ?? [:]
                 let progressRaw = progressMap[spawn.id] ?? [:]
@@ -795,6 +802,7 @@ private final class ARCameraViewModel: ObservableObject {
                 ]
 
                 coinBalance += spawn.coinValue
+                score += spawn.pointValue
 
                 var capturedCharacters = userData["arCapturedCharacters"] as? [[String: Any]] ?? []
                 let nextCatchAt = newCount < spawn.catchableTime
@@ -806,10 +814,14 @@ private final class ARCameraViewModel: ObservableObject {
                     "title": spawn.title,
                     "assetPath": spawn.assetPath,
                     "coinValue": spawn.coinValue,
+                    "pointValue": spawn.pointValue,
                     "catchCount": newCount,
                     "catchableTime": spawn.catchableTime,
                     "lastCapturedAt": Timestamp(date: now)
                 ]
+                if let previewImagePath = spawn.previewImagePath {
+                    record["previewImagePath"] = previewImagePath
+                }
                 if let nextCatchAt {
                     record["nextCatchAt"] = Timestamp(date: nextCatchAt)
                 }
@@ -822,6 +834,7 @@ private final class ARCameraViewModel: ObservableObject {
 
                 transaction.setData([
                     "coinBalance": coinBalance,
+                    "score": score,
                     "arCaptureProgress": progressMap,
                     "arCapturedCharacters": capturedCharacters,
                     "updatedAt": Timestamp(date: now)
@@ -917,8 +930,10 @@ private struct ARSpawn {
     let revealRadius: Double
     let catchRadius: Double
     let coinValue: Int
+    let pointValue: Int
     let catchableTime: Int
     let respawnDays: Int
+    let previewImagePath: String?
 
     var location: CLLocation {
         CLLocation(latitude: lat, longitude: lon)
@@ -945,8 +960,10 @@ private struct ARSpawn {
         self.revealRadius = revealRadius
         self.catchRadius = catchRadius
         self.coinValue = ARSpawn.toInt(data["coin_value"]) ?? ARSpawn.toInt(data["coinValue"]) ?? 0
+        self.pointValue = ARSpawn.toInt(data["point"]) ?? ARSpawn.toInt(data["points"]) ?? ARSpawn.toInt(data["point_value"]) ?? 0
         self.catchableTime = max(1, ARSpawn.toInt(data["catchable_time"]) ?? ARSpawn.toInt(data["catchableTime"]) ?? 1)
         self.respawnDays = max(1, ARSpawn.toInt(data["respawn_days"]) ?? ARSpawn.toInt(data["respawnDays"]) ?? 1)
+        self.previewImagePath = data["previewImagePath"] as? String ?? data["preview_path"] as? String
     }
 
     private static func toDouble(_ value: Any?) -> Double? {
