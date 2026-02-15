@@ -169,7 +169,7 @@ private struct ARRealityContainerView: UIViewRepresentable {
 
                 let host = UIHostingController(rootView: ARNearbyPostCard(post: post))
                 host.view.backgroundColor = .clear
-                host.view.frame = CGRect(x: 0, y: 0, width: 230, height: 190)
+                host.view.frame = CGRect(x: 0, y: 0, width: 280, height: 230)
                 arView.addSubview(host.view)
                 postCards[post.id] = host
             }
@@ -662,12 +662,13 @@ private final class ARCameraViewModel: ObservableObject {
                     likeCount: likeCount,
                     dislikeCount: dislikeCount,
                     distanceMeters: distance,
-                    firstPhotoURL: firstPhotoURL
+                    firstPhotoURL: firstPhotoURL,
+                    proximityScale: proximityScale(for: distance)
                 )
             }
 
             nearbyPosts = mapped
-                .filter { $0.distanceMeters <= 120 }
+                .filter { $0.distanceMeters <= 30 }
                 .sorted { $0.distanceMeters < $1.distanceMeters }
                 .prefix(8)
                 .map { $0 }
@@ -887,6 +888,13 @@ private final class ARCameraViewModel: ObservableObject {
         return nil
     }
 
+    private func proximityScale(for distance: Double) -> CGFloat {
+        // 30m -> 0.72x, 0m -> 1.20x
+        let clampedDistance = max(0, min(distance, 30))
+        let normalized = 1.0 - (clampedDistance / 30.0)
+        return CGFloat(0.72 + (0.48 * normalized))
+    }
+
     private func postCategory(from raw: Any?) -> Post.PostCategory {
         guard let raw else { return .casual }
         let text = String(describing: raw).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1004,6 +1012,7 @@ private struct ARNearbyPost: Identifiable {
     let dislikeCount: Int
     let distanceMeters: Double
     let firstPhotoURL: URL?
+    let proximityScale: CGFloat
 }
 
 private struct ARNearbyPostCard: View {
@@ -1084,13 +1093,15 @@ private struct ARNearbyPostCard: View {
             }
         }
         .padding(10)
-        .frame(width: 240, alignment: .leading)
+        .frame(width: 230, alignment: .leading)
         .background(categoryColor.opacity(0.28))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(categoryColor.opacity(0.6), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .scaleEffect(post.proximityScale)
+        .animation(.easeOut(duration: 0.18), value: post.proximityScale)
     }
 }
 
