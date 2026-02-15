@@ -25,7 +25,7 @@ struct ARCameraView: View {
                 shouldRenderModel: viewModel.contentMode == .character && viewModel.canRenderModel,
                 renderSpawnID: viewModel.renderSpawnID,
                 characterScale: viewModel.characterVisualScale,
-                nearbyPosts: viewModel.contentMode == .posts ? viewModel.nearbyPosts : [],
+                nearbyPosts: viewModel.shouldRenderPostOverlays ? viewModel.nearbyPosts : [],
                 onCapture: {
                     viewModel.captureCurrentSpawn()
                 }
@@ -39,6 +39,21 @@ struct ARCameraView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+
+                if viewModel.contentMode == .character {
+                    Button {
+                        viewModel.togglePostsOverlayInCharacter()
+                    } label: {
+                        Text(viewModel.showPostsInCharacter ? "Hide Posts Overlay" : "Show Posts Overlay")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color.white.opacity(0.16))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
 
                 Text(viewModel.titleText)
                     .font(.headline)
@@ -352,6 +367,7 @@ private final class ARCameraViewModel: ObservableObject {
     @Published var rewardInfoText: String?
     @Published var catchInstructionText = "Get inside catch radius to start combo"
     @Published var nearbyPosts: [ARNearbyPost] = []
+    @Published var showPostsInCharacter = false
 
     private let locationManager = LocationManager()
     private let db = Firestore.firestore()
@@ -371,6 +387,10 @@ private final class ARCameraViewModel: ObservableObject {
     private var isCaptureProcessing = false
     private let maxRenderableHorizontalAccuracy: CLLocationAccuracy = 30
     private let maxCatchHorizontalAccuracy: CLLocationAccuracy = 15
+
+    var shouldRenderPostOverlays: Bool {
+        contentMode == .posts || (contentMode == .character && showPostsInCharacter)
+    }
 
     func onAppear() {
         guard !didStart else { return }
@@ -393,8 +413,12 @@ private final class ARCameraViewModel: ObservableObject {
         errorText = nil
         switch mode {
         case .character:
-            nearbyPostsMonitorTask?.cancel()
-            nearbyPosts = []
+            if showPostsInCharacter {
+                startNearbyPostsMonitoring()
+            } else {
+                nearbyPostsMonitorTask?.cancel()
+                nearbyPosts = []
+            }
             smoothedDistanceMeters = nil
             loadSpawnTask?.cancel()
             loadSpawnTask = Task { @MainActor in
@@ -414,6 +438,17 @@ private final class ARCameraViewModel: ObservableObject {
             statusText = "Posts in range: 0"
             catchInstructionText = ""
             startNearbyPostsMonitoring()
+        }
+    }
+
+    func togglePostsOverlayInCharacter() {
+        showPostsInCharacter.toggle()
+        guard contentMode == .character else { return }
+        if showPostsInCharacter {
+            startNearbyPostsMonitoring()
+        } else {
+            nearbyPostsMonitorTask?.cancel()
+            nearbyPosts = []
         }
     }
 
