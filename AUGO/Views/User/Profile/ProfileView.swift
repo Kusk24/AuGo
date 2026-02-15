@@ -37,7 +37,7 @@ struct ProfileView: View {
         authManager.userProfile?.score ?? 0
     }
     
-    private var coinBalance: Int {
+    private var coinBalance: Double {
         postManager.userEconomy?.coinBalance ?? authManager.userProfile?.coinBalance ?? 0
     }
     
@@ -53,7 +53,7 @@ struct ProfileView: View {
         postManager.userEconomy?.canClaimDailyCoin ?? false
     }
     
-    private var dailyCoinReward: Int {
+    private var dailyCoinReward: Double {
         postManager.userEconomy?.dailyCoinReward ?? 0
     }
     
@@ -149,7 +149,7 @@ struct ProfileView: View {
                         HStack(spacing: 12) {
                             EconomyInfoCard(
                                 title: "Coin Balance",
-                                value: "\(coinBalance)",
+                                value: coinsText(coinBalance),
                                 icon: "bitcoinsign.circle.fill"
                             )
                             EconomyInfoCard(
@@ -174,7 +174,7 @@ struct ProfileView: View {
                         } label: {
                             HStack {
                                 Image(systemName: "gift.fill")
-                                Text(canClaimDailyCoin ? "Claim Daily +\(dailyCoinReward) Coins" : "Daily Coin Already Claimed")
+                                Text(canClaimDailyCoin ? "Claim Daily +\(coinsText(dailyCoinReward)) Coins" : "Daily Coin Already Claimed")
                                     .font(.subheadline.weight(.semibold))
                             }
                             .frame(maxWidth: .infinity)
@@ -354,6 +354,10 @@ struct ProfileView: View {
             }
         }
     }
+}
+
+private func coinsText(_ value: Double) -> String {
+    String(format: "%.1f", value)
 }
 
 // MARK: - Reusable bits
@@ -584,14 +588,14 @@ private struct CapturedCharacterCard: View {
 
     private var footerText: String {
         if capture.catchCount >= capture.catchableTime {
-            return "Maxed · +\(capture.coinValue) coins · +\(capture.pointValue) pts"
+            return "Maxed · +\(coinsText(capture.coinValue)) coins · +\(capture.pointValue) pts"
         }
         if let next = capture.nextCatchAt, next > Date() {
             let formatter = RelativeDateTimeFormatter()
             formatter.unitsStyle = .short
             return "Next in \(formatter.localizedString(for: next, relativeTo: Date()))"
         }
-        return "Ready again · +\(capture.coinValue) coins · +\(capture.pointValue) pts"
+        return "Ready again · +\(coinsText(capture.coinValue)) coins · +\(capture.pointValue) pts"
     }
 
     var body: some View {

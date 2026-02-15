@@ -25,16 +25,16 @@ class PostManager: ObservableObject {
     }
     
     struct UserEconomySnapshot {
-        let coinBalance: Int
+        let coinBalance: Double
         let dailyPostsUsed: Int
         let dailyFreePostLimit: Int
         let freePostsLeft: Int
-        let dailyCoinReward: Int
+        let dailyCoinReward: Double
         let canClaimDailyCoin: Bool
     }
     
     enum PostCreationError: LocalizedError {
-        case insufficientCoins(required: Int, balance: Int)
+        case insufficientCoins(required: Double, balance: Double)
         case invalidPhotoData
         case missingStorageBucket
         case missingAuthToken
@@ -43,7 +43,11 @@ class PostManager: ObservableObject {
         var errorDescription: String? {
             switch self {
             case let .insufficientCoins(required, balance):
-                return "Not enough coins. Need \(required), current balance is \(balance)."
+                return String(
+                    format: "Not enough coins. Need %.1f, current balance is %.1f.",
+                    required,
+                    balance
+                )
             case .invalidPhotoData:
                 return "One or more selected photos are invalid."
             case .missingStorageBucket:
@@ -142,6 +146,18 @@ class PostManager: ObservableObject {
     private func normalizedDailyPostCount(rawCount: Int, rawDate: Date?, now: Date) -> Int {
         isSameDay(rawDate, now) ? rawCount : 0
     }
+
+    private func doubleValue(_ value: Any?) -> Double {
+        if let doubleValue = value as? Double { return doubleValue }
+        if let intValue = value as? Int { return Double(intValue) }
+        if let number = value as? NSNumber { return number.doubleValue }
+        if let stringValue = value as? String { return Double(stringValue) ?? 0 }
+        return 0
+    }
+
+    private static func formatCoins(_ value: Double) -> String {
+        String(format: "%.1f", value)
+    }
     
     func refreshUserEconomy(userId: String) async {
         let config = await loadAdminConfiguration()
@@ -150,7 +166,7 @@ class PostManager: ObservableObject {
             let data = snapshot.data() ?? [:]
             
             let now = Date()
-            let coinBalance = data["coinBalance"] as? Int ?? 0
+            let coinBalance = doubleValue(data["coinBalance"])
             let rawDailyPostCount = data["dailyPostCount"] as? Int ?? 0
             let dailyPostCountDate = (data["dailyPostCountDate"] as? Timestamp)?.dateValue()
             let lastCoinGrantDate = (data["lastCoinGrantDate"] as? Timestamp)?.dateValue()
@@ -169,7 +185,7 @@ class PostManager: ObservableObject {
                 dailyPostsUsed: todayPostCount,
                 dailyFreePostLimit: config.dailyFreePostLimit,
                 freePostsLeft: freePostsLeft,
-                dailyCoinReward: config.dailyFreeCoin,
+                dailyCoinReward: Double(config.dailyFreeCoin),
                 canClaimDailyCoin: canClaimDailyCoin
             )
         } catch {
@@ -194,21 +210,21 @@ class PostManager: ObservableObject {
             }
             
             let userData = userSnapshot.data() ?? [:]
-            let coinBalance = userData["coinBalance"] as? Int ?? 0
+            let coinBalance = self.doubleValue(userData["coinBalance"])
             let lastCoinGrantDate = (userData["lastCoinGrantDate"] as? Timestamp)?.dateValue()
             
             if self.isSameDay(lastCoinGrantDate, now) {
                 return "Daily coin already claimed today."
             }
             
-            let newBalance = coinBalance + config.dailyFreeCoin
+            let newBalance = coinBalance + Double(config.dailyFreeCoin)
             transaction.setData([
                 "coinBalance": newBalance,
                 "lastCoinGrantDate": Timestamp(date: startOfDay),
                 "updatedAt": Timestamp(date: now)
             ], forDocument: userRef, merge: true)
             
-            return "Claimed +\(config.dailyFreeCoin) coins. Balance: \(newBalance)."
+            return "Claimed +\(Self.formatCoins(Double(config.dailyFreeCoin))) coins. Balance: \(Self.formatCoins(newBalance))."
         }
         
         let message = (result as? String) ?? "Daily coin claimed."
@@ -248,7 +264,7 @@ class PostManager: ObservableObject {
                 }
                 
                 let userData = userSnapshot.data() ?? [:]
-                var coinBalance = userData["coinBalance"] as? Int ?? 0
+                var coinBalance = self.doubleValue(userData["coinBalance"])
                 let rawDailyPostCount = userData["dailyPostCount"] as? Int ?? 0
                 let dailyPostCountDate = (userData["dailyPostCountDate"] as? Timestamp)?.dateValue()
                 var dailyPostCount = self.normalizedDailyPostCount(
@@ -259,11 +275,11 @@ class PostManager: ObservableObject {
                 
                 let needsCoin = dailyPostCount >= adminConfig.dailyFreePostLimit
                 if needsCoin && coinBalance < 1 {
-                    errorPointer?.pointee = PostCreationError.insufficientCoins(required: 1, balance: coinBalance) as NSError
+                    errorPointer?.pointee = PostCreationError.insufficientCoins(required: 1.0, balance: coinBalance) as NSError
                     return nil
                 }
                 
-                let spentCoin = needsCoin ? 1 : 0
+                let spentCoin: Double = needsCoin ? 1.0 : 0.0
                 coinBalance -= spentCoin
                 dailyPostCount += 1
                 
@@ -306,7 +322,7 @@ class PostManager: ObservableObject {
                 ], forDocument: postRef)
                 
                 if spentCoin > 0 {
-                    transactionMessage = "Post created. -1 coin (Balance: \(coinBalance))."
+                    transactionMessage = "Post created. -1.0 coin (Balance: \(Self.formatCoins(coinBalance)))."
                 } else {
                     let freeUsed = min(dailyPostCount, adminConfig.dailyFreePostLimit)
                     transactionMessage = "Post created. Free posts today: \(freeUsed)/\(adminConfig.dailyFreePostLimit)."

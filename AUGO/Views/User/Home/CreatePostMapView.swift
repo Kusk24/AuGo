@@ -19,7 +19,7 @@ struct CreatePostMapView: View {
     @State private var showAlert = false
     @State private var alertMessage = ""
     
-    private var coinBalance: Int {
+    private var coinBalance: Double {
         postManager.userEconomy?.coinBalance ?? authManager.userProfile?.coinBalance ?? 0
     }
     
@@ -68,7 +68,7 @@ struct CreatePostMapView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "bitcoinsign.circle.fill")
                             .foregroundColor(.orange)
-                        Text("Coins: \(coinBalance)")
+                        Text("Coins: \(coinsText(coinBalance))")
                             .font(.caption.weight(.semibold))
                     }
                     .padding(.horizontal, 10)
@@ -179,4 +179,8 @@ struct CreatePostMapView: View {
             return .green
         }
     }
+}
+
+private func coinsText(_ value: Double) -> String {
+    String(format: "%.1f", value)
 }

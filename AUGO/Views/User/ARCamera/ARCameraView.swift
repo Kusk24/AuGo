@@ -8,6 +8,13 @@ import FirebaseCore
 import FirebaseAuth
 import FirebaseFirestore
 
+private enum ARContentMode: String, CaseIterable, Identifiable {
+    case character = "Character"
+    case posts = "Posts"
+
+    var id: String { rawValue }
+}
+
 struct ARCameraView: View {
     @StateObject private var viewModel = ARCameraViewModel()
 
@@ -15,16 +22,24 @@ struct ARCameraView: View {
         ZStack {
             ARRealityContainerView(
                 modelEntity: viewModel.modelEntity,
-                shouldRenderModel: viewModel.canRenderModel,
+                shouldRenderModel: viewModel.contentMode == .character && viewModel.canRenderModel,
                 renderSpawnID: viewModel.renderSpawnID,
-                nearbyPosts: viewModel.nearbyPosts,
+                characterScale: viewModel.characterVisualScale,
+                nearbyPosts: viewModel.contentMode == .posts ? viewModel.nearbyPosts : [],
                 onCapture: {
                     viewModel.captureCurrentSpawn()
                 }
             )
             .ignoresSafeArea()
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
+                Picker("", selection: $viewModel.contentMode) {
+                    ForEach(ARContentMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+
                 Text(viewModel.titleText)
                     .font(.headline)
                     .foregroundColor(.white)
@@ -45,7 +60,7 @@ struct ARCameraView: View {
                         .foregroundColor(Color.Brand.coin)
                 }
 
-                if viewModel.canRenderModel {
+                if viewModel.contentMode == .character && viewModel.canRenderModel {
                     Text(viewModel.catchInstructionText)
                         .font(.footnote)
                         .foregroundColor(Color.Brand.coin)
@@ -73,6 +88,9 @@ struct ARCameraView: View {
         .onAppear {
             viewModel.onAppear()
         }
+        .onChange(of: viewModel.contentMode) { _, mode in
+            viewModel.applyContentMode(mode)
+        }
         .onDisappear {
             viewModel.onDisappear()
         }
@@ -83,6 +101,7 @@ private struct ARRealityContainerView: UIViewRepresentable {
     let modelEntity: ModelEntity?
     let shouldRenderModel: Bool
     let renderSpawnID: String?
+    let characterScale: CGFloat
     let nearbyPosts: [ARNearbyPost]
     let onCapture: () -> Void
 
@@ -107,6 +126,7 @@ private struct ARRealityContainerView: UIViewRepresentable {
     func updateUIView(_ arView: ARView, context: Context) {
         context.coordinator.onCapture = onCapture
         context.coordinator.updateFloatingPosts(nearbyPosts)
+        context.coordinator.updateCharacterScale(Float(characterScale))
 
         guard shouldRenderModel, let modelEntity else {
             context.coordinator.clearModelIfNeeded()
@@ -121,6 +141,7 @@ private struct ARRealityContainerView: UIViewRepresentable {
         private var anchorEntity: AnchorEntity?
         private weak var currentModelEntity: ModelEntity?
         private var currentSpawnID: String?
+        private var baseCharacterScale: SIMD3<Float>?
         private var postAnchors: [String: AnchorEntity] = [:]
         private var postCards: [String: UIHostingController<ARNearbyPostCard>] = [:]
         private var displayLink: CADisplayLink?
@@ -141,6 +162,7 @@ private struct ARRealityContainerView: UIViewRepresentable {
         func clearModelIfNeeded() {
             currentModelEntity = nil
             currentSpawnID = nil
+            baseCharacterScale = nil
             anchorEntity?.removeFromParent()
             anchorEntity = nil
         }
@@ -255,6 +277,13 @@ private struct ARRealityContainerView: UIViewRepresentable {
             anchorEntity = anchor
             currentModelEntity = cloned
             currentSpawnID = renderSpawnID
+            baseCharacterScale = cloned.scale
+        }
+
+        func updateCharacterScale(_ scaleMultiplier: Float) {
+            guard let currentModelEntity, let baseCharacterScale else { return }
+            let clamped = min(max(scaleMultiplier, 0.7), 1.8)
+            currentModelEntity.scale = baseCharacterScale * SIMD3<Float>(repeating: clamped)
         }
 
         @objc
@@ -311,6 +340,7 @@ private struct ARRealityContainerView: UIViewRepresentable {
 }
 
 private final class ARCameraViewModel: ObservableObject {
+    @Published var contentMode: ARContentMode = .character
     @Published var titleText = "AR Hunt"
     @Published var statusText = "Loading nearby AR spawn..."
     @Published var distanceText: String?
@@ -318,6 +348,7 @@ private final class ARCameraViewModel: ObservableObject {
     @Published var canRenderModel = false
     @Published var modelEntity: ModelEntity?
     @Published var renderSpawnID: String?
+    @Published var characterVisualScale: CGFloat = 1.0
     @Published var rewardInfoText: String?
     @Published var catchInstructionText = "Get inside catch radius to start combo"
     @Published var nearbyPosts: [ARNearbyPost] = []
@@ -331,11 +362,14 @@ private final class ARCameraViewModel: ObservableObject {
     private var distanceMonitorTask: Task<Void, Never>?
     private var nearbyPostsMonitorTask: Task<Void, Never>?
     private var userCaptureProgress: [String: ARCaptureProgress] = [:]
+    private var smoothedDistanceMeters: Double?
     private var comboHits = 0
     private var lastHitAt: Date?
     private let comboRequiredHits = 3
     private let comboWindowSeconds: TimeInterval = 2.0
     private var isCaptureProcessing = false
+    private let maxRenderableHorizontalAccuracy: CLLocationAccuracy = 30
+    private let maxCatchHorizontalAccuracy: CLLocationAccuracy = 15
 
     func onAppear() {
         guard !didStart else { return }
@@ -343,11 +377,7 @@ private final class ARCameraViewModel: ObservableObject {
 
         locationManager.requestWhenInUseAuthorization()
         locationManager.startUpdatingLocation()
-
-        Task {
-            await loadNearestSpawnAndAssetIfNeeded()
-        }
-        startNearbyPostsMonitoring()
+        applyContentMode(contentMode)
     }
 
     func onDisappear() {
@@ -357,9 +387,40 @@ private final class ARCameraViewModel: ObservableObject {
         didStart = false
     }
 
+    func applyContentMode(_ mode: ARContentMode) {
+        errorText = nil
+        switch mode {
+        case .character:
+            nearbyPostsMonitorTask?.cancel()
+            nearbyPosts = []
+            smoothedDistanceMeters = nil
+            Task { @MainActor in
+                await loadNearestSpawnAndAssetIfNeeded()
+            }
+        case .posts:
+            distanceMonitorTask?.cancel()
+            canRenderModel = false
+            renderSpawnID = nil
+            modelEntity = nil
+            rewardInfoText = nil
+            distanceText = nil
+            smoothedDistanceMeters = nil
+            titleText = "Nearby Posts"
+            statusText = "Showing floating posts within 30m"
+            catchInstructionText = "Switch to Character mode to catch AR objects"
+            startNearbyPostsMonitoring()
+        }
+    }
+
     func captureCurrentSpawn() {
         guard let spawn = activeSpawn else { return }
         guard !isCaptureProcessing else { return }
+        guard let location = locationManager.lastLocation else { return }
+        guard location.horizontalAccuracy > 0, location.horizontalAccuracy <= maxCatchHorizontalAccuracy else {
+            statusText = String(format: "GPS too noisy (±%.0fm). Move to open sky.", max(location.horizontalAccuracy, 0))
+            catchInstructionText = "Wait for better GPS to catch"
+            return
+        }
 
         switch eligibility(for: spawn, now: Date()) {
         case .limitReached(let limit):
@@ -412,7 +473,7 @@ private final class ARCameraViewModel: ObservableObject {
             do {
                 let result = try await persistCapture(for: spawn)
                 userCaptureProgress[spawn.id] = ARCaptureProgress(count: result.newCount, lastCapturedAt: Date())
-                statusText = "Captured \(spawn.title)! +\(spawn.coinValue) coins, +\(spawn.pointValue) points"
+                statusText = "Captured \(spawn.title)! +\(formatCoins(spawn.coinValue)) coins, +\(spawn.pointValue) points"
                 catchInstructionText = result.newCount >= spawn.catchableTime ? "Limit reached for this spawn" : "Captured! Ready again after cooldown"
                 renderSpawnID = nil
                 canRenderModel = false
@@ -449,7 +510,7 @@ private final class ARCameraViewModel: ObservableObject {
             let spawn = try await fetchNearestActiveSpawn()
             activeSpawn = spawn
             titleText = spawn.title
-            rewardInfoText = "Nearest: \(spawn.title) • +\(spawn.coinValue) coins • +\(spawn.pointValue) points"
+            rewardInfoText = "Nearest: \(spawn.title) • +\(formatCoins(spawn.coinValue)) coins • +\(spawn.pointValue) points"
 
             let currentDistance = distanceToSpawn(spawn)
             if let currentDistance {
@@ -535,7 +596,17 @@ private final class ARCameraViewModel: ObservableObject {
 
     private func distanceToSpawn(_ spawn: ARSpawn) -> CLLocationDistance? {
         guard let userLocation = locationManager.lastLocation else { return nil }
-        return spawn.location.distance(from: userLocation)
+        let rawDistance = spawn.location.distance(from: userLocation)
+        if smoothedDistanceMeters == nil {
+            smoothedDistanceMeters = rawDistance
+        } else if let current = smoothedDistanceMeters {
+            // Exponential smoothing to reduce GPS oscillation.
+            smoothedDistanceMeters = (current * 0.72) + (rawDistance * 0.28)
+        }
+
+        let accuracy = max(userLocation.horizontalAccuracy, 0)
+        let accuracyPenalty = max(0, accuracy - 8) * 0.35
+        return (smoothedDistanceMeters ?? rawDistance) + accuracyPenalty
     }
 
     private func updateRenderEligibility() {
@@ -559,7 +630,7 @@ private final class ARCameraViewModel: ObservableObject {
             let relative = RelativeDateTimeFormatter().localizedString(for: availableAt, relativeTo: Date())
             statusText = "Cooldown active"
             catchInstructionText = "Available \(relative)"
-            rewardInfoText = "Nearest: \(spawn.title) • +\(spawn.coinValue) coins • +\(spawn.pointValue) points"
+            rewardInfoText = "Nearest: \(spawn.title) • +\(formatCoins(spawn.coinValue)) coins • +\(spawn.pointValue) points"
             return
         case .available:
             break
@@ -573,15 +644,27 @@ private final class ARCameraViewModel: ObservableObject {
             return
         }
 
+        if let location = locationManager.lastLocation,
+           location.horizontalAccuracy <= 0 || location.horizontalAccuracy > maxRenderableHorizontalAccuracy {
+            canRenderModel = false
+            renderSpawnID = nil
+            characterVisualScale = 1.0
+            statusText = String(format: "Improving GPS... current ±%.0fm", max(location.horizontalAccuracy, 0))
+            distanceText = "Move to open sky for better accuracy"
+            catchInstructionText = "Character hidden until GPS improves"
+            return
+        }
+
         distanceText = String(format: "Distance: %.1f m", distance)
 
         if distance <= spawn.revealRadius {
             canRenderModel = true
             renderSpawnID = spawn.id
             statusText = "Spawn unlocked"
-            rewardInfoText = "Nearest: \(spawn.title) • +\(spawn.coinValue) coins • +\(spawn.pointValue) points"
+            rewardInfoText = "Nearest: \(spawn.title) • +\(formatCoins(spawn.coinValue)) coins • +\(spawn.pointValue) points"
+            characterVisualScale = characterScale(for: distance, spawn: spawn)
             if distance <= spawn.catchRadius {
-                catchInstructionText = "Tap 3x quickly to catch (+\(spawn.coinValue) coins, +\(spawn.pointValue) pts)"
+                catchInstructionText = "Tap 3x quickly to catch (+\(formatCoins(spawn.coinValue)) coins, +\(spawn.pointValue) pts)"
             } else {
                 let need = max(distance - spawn.catchRadius, 0)
                 catchInstructionText = String(format: "Move %.1f m closer to start 3-hit combo", need)
@@ -591,9 +674,10 @@ private final class ARCameraViewModel: ObservableObject {
             renderSpawnID = nil
             comboHits = 0
             lastHitAt = nil
+            characterVisualScale = 1.0
             let remaining = max(distance - spawn.revealRadius, 0)
             statusText = String(format: "Move %.1f m closer to reveal", remaining)
-            rewardInfoText = "Nearest: \(spawn.title) • +\(spawn.coinValue) coins • +\(spawn.pointValue) points"
+            rewardInfoText = "Nearest: \(spawn.title) • +\(formatCoins(spawn.coinValue)) coins • +\(spawn.pointValue) points"
             catchInstructionText = "Hidden until reveal radius"
         }
     }
@@ -751,7 +835,7 @@ private final class ARCameraViewModel: ObservableObject {
         return .available
     }
 
-    private func persistCapture(for spawn: ARSpawn) async throws -> (newCount: Int, newBalance: Int) {
+    private func persistCapture(for spawn: ARSpawn) async throws -> (newCount: Int, newBalance: Double) {
         guard let uid = auth.currentUser?.uid else {
             throw ARCameraError.notSignedIn
         }
@@ -770,7 +854,7 @@ private final class ARCameraViewModel: ObservableObject {
                 }
 
                 let userData = userSnapshot.data() ?? [:]
-                var coinBalance = intValue(userData["coinBalance"])
+                var coinBalance = doubleValue(userData["coinBalance"])
                 var score = intValue(userData["score"])
 
                 var progressMap = userData["arCaptureProgress"] as? [String: [String: Any]] ?? [:]
@@ -844,7 +928,7 @@ private final class ARCameraViewModel: ObservableObject {
                     "updatedAt": Timestamp(date: now)
                 ], forDocument: userRef, merge: true)
 
-                return ["newCount": newCount, "newBalance": coinBalance]
+                return ["newCount": Double(newCount), "newBalance": coinBalance]
             }
         } catch {
             let nsError = error as NSError
@@ -865,13 +949,12 @@ private final class ARCameraViewModel: ObservableObject {
             throw error
         }
 
-        guard let payload = result as? [String: Int],
-              let newCount = payload["newCount"],
+        guard let payload = result as? [String: Double],
+              let newCountDouble = payload["newCount"],
               let newBalance = payload["newBalance"] else {
             throw ARCameraError.captureFailed
         }
-
-        return (newCount, newBalance)
+        return (Int(newCountDouble), newBalance)
     }
 
     private func intValue(_ value: Any?) -> Int {
@@ -879,6 +962,18 @@ private final class ARCameraViewModel: ObservableObject {
         if let number = value as? NSNumber { return number.intValue }
         if let doubleValue = value as? Double { return Int(doubleValue) }
         return 0
+    }
+
+    private func doubleValue(_ value: Any?) -> Double {
+        if let doubleValue = value as? Double { return doubleValue }
+        if let number = value as? NSNumber { return number.doubleValue }
+        if let intValue = value as? Int { return Double(intValue) }
+        if let stringValue = value as? String { return Double(stringValue) ?? 0 }
+        return 0
+    }
+
+    private func formatCoins(_ value: Double) -> String {
+        String(format: "%.1f", value)
     }
 
     private func toDouble(_ value: Any?) -> Double? {
@@ -901,6 +996,14 @@ private final class ARCameraViewModel: ObservableObject {
         if text.isEmpty { return .casual }
         let normalized = text.prefix(1).uppercased() + text.dropFirst().lowercased()
         return Post.PostCategory(rawValue: normalized) ?? .casual
+    }
+
+    private func characterScale(for distance: Double, spawn: ARSpawn) -> CGFloat {
+        guard spawn.revealRadius > 0 else { return 1.0 }
+        let clamped = max(0, min(distance, spawn.revealRadius))
+        let normalized = 1.0 - (clamped / spawn.revealRadius)
+        // Far: 0.85x, Near: 1.55x
+        return CGFloat(0.85 + (0.70 * normalized))
     }
 
     private func parseFirestoreDate(_ value: Any?) -> Date? {
@@ -940,7 +1043,7 @@ private struct ARSpawn {
     let alt: Double
     let revealRadius: Double
     let catchRadius: Double
-    let coinValue: Int
+    let coinValue: Double
     let pointValue: Int
     let catchableTime: Int
     let respawnDays: Int
@@ -970,7 +1073,7 @@ private struct ARSpawn {
         self.alt = ARSpawn.toDouble(data["alt"]) ?? 0
         self.revealRadius = revealRadius
         self.catchRadius = catchRadius
-        self.coinValue = ARSpawn.toInt(data["coin_value"]) ?? 0
+        self.coinValue = ARSpawn.toDouble(data["coin_value"]) ?? 0
         self.pointValue = ARSpawn.toInt(data["point"]) ?? 0
         self.catchableTime = max(1, ARSpawn.toInt(data["catchable_time"]) ?? 1)
         self.respawnDays = max(1, ARSpawn.toInt(data["respawn_days"]) ?? 1)

@@ -9,7 +9,7 @@ struct ARCapturedCharacter: Codable, Identifiable {
     let title: String
     let assetPath: String
     let preview: String?
-    let coinValue: Int
+    let coinValue: Double
     let pointValue: Int
     let catchCount: Int
     let catchableTime: Int
@@ -33,7 +33,7 @@ struct User: Codable, Identifiable {
     var warningCount: Int
     var status: UserStatus
     var score: Int
-    var coinBalance: Int = 0
+    var coinBalance: Double = 0
     var dailyPostCount: Int = 0
     var dailyPostCountDate: Date? = nil
     var lastCoinGrantDate: Date? = nil

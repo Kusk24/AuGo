@@ -402,8 +402,8 @@ class AuthenticationManager: ObservableObject {
                     title: title,
                     assetPath: assetPath,
                     preview: entry["preview"] as? String,
-                    coinValue: entry["coinValue"] as? Int ?? 0,
-                    pointValue: entry["pointValue"] as? Int ?? 0,
+                    coinValue: parseDouble(entry["coinValue"]),
+                    pointValue: parseInt(entry["pointValue"]),
                     catchCount: entry["catchCount"] as? Int ?? 0,
                     catchableTime: entry["catchableTime"] as? Int ?? 1,
                     lastCapturedAt: parseFirestoreDate(entry["lastCapturedAt"]),
@@ -423,8 +423,8 @@ class AuthenticationManager: ObservableObject {
             lastWarningDate: lastWarningDate,
             warningCount: (data["warningCount"] as? Int) ?? 0,
             status: status,
-            score: (data["score"] as? Int) ?? 0,
-            coinBalance: (data["coinBalance"] as? Int) ?? 0,
+            score: parseInt(data["score"]),
+            coinBalance: parseDouble(data["coinBalance"]),
             dailyPostCount: (data["dailyPostCount"] as? Int) ?? 0,
             dailyPostCountDate: parseFirestoreDate(data["dailyPostCountDate"]),
             lastCoinGrantDate: parseFirestoreDate(data["lastCoinGrantDate"]),
@@ -452,6 +452,36 @@ class AuthenticationManager: ObservableObject {
             return nil
         default:
             return nil
+        }
+    }
+
+    private func parseDouble(_ value: Any?) -> Double {
+        switch value {
+        case let doubleValue as Double:
+            return doubleValue
+        case let intValue as Int:
+            return Double(intValue)
+        case let number as NSNumber:
+            return number.doubleValue
+        case let stringValue as String:
+            return Double(stringValue) ?? 0
+        default:
+            return 0
+        }
+    }
+
+    private func parseInt(_ value: Any?) -> Int {
+        switch value {
+        case let intValue as Int:
+            return intValue
+        case let doubleValue as Double:
+            return Int(doubleValue)
+        case let number as NSNumber:
+            return number.intValue
+        case let stringValue as String:
+            return Int(stringValue) ?? 0
+        default:
+            return 0
         }
     }
     
