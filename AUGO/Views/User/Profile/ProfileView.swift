@@ -575,7 +575,7 @@ private struct CapturedCharacterCard: View {
     let capture: ARCapturedCharacter
 
     private var previewURL: URL? {
-        guard let previewPath = capture.previewImagePath else { return nil }
+        guard let previewPath = capture.preview else { return nil }
         guard let app = FirebaseApp.app(), let bucket = app.options.storageBucket else { return nil }
         let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
         guard let escapedPath = previewPath.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }

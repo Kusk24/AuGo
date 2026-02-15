@@ -648,7 +648,10 @@ private final class ARCameraViewModel: ObservableObject {
                 let distance = postLocation.distance(from: userLocation)
 
                 let photoPaths = data["photoPaths"] as? [String] ?? []
-                let firstPhotoURL = photoPaths.first.flatMap { path in
+                let firstPath = photoPaths.first
+                    ?? (data["photoPath"] as? String)
+                    ?? (data["imagePath"] as? String)
+                let firstPhotoURL = firstPath.flatMap { path in
                     try? storageDownloadURL(for: path)
                 }
 
@@ -819,8 +822,8 @@ private final class ARCameraViewModel: ObservableObject {
                     "catchableTime": spawn.catchableTime,
                     "lastCapturedAt": Timestamp(date: now)
                 ]
-                if let previewImagePath = spawn.previewImagePath {
-                    record["previewImagePath"] = previewImagePath
+                if let preview = spawn.preview {
+                    record["preview"] = preview
                 }
                 if let nextCatchAt {
                     record["nextCatchAt"] = Timestamp(date: nextCatchAt)
@@ -933,7 +936,7 @@ private struct ARSpawn {
     let pointValue: Int
     let catchableTime: Int
     let respawnDays: Int
-    let previewImagePath: String?
+    let preview: String?
 
     var location: CLLocation {
         CLLocation(latitude: lat, longitude: lon)
@@ -943,8 +946,8 @@ private struct ARSpawn {
         guard
             let title = data["title"] as? String,
             let assetPath = data["assetPath"] as? String,
-            let lat = ARSpawn.toDouble(data["lat"]),
-            let lon = ARSpawn.toDouble(data["lon"]),
+            let lat = ARSpawn.toDouble(data["latitude"]),
+            let lon = ARSpawn.toDouble(data["longitude"]),
             let revealRadius = ARSpawn.toDouble(data["revealRadius"]),
             let catchRadius = ARSpawn.toDouble(data["catchRadius"])
         else {
@@ -959,11 +962,11 @@ private struct ARSpawn {
         self.alt = ARSpawn.toDouble(data["alt"]) ?? 0
         self.revealRadius = revealRadius
         self.catchRadius = catchRadius
-        self.coinValue = ARSpawn.toInt(data["coin_value"]) ?? ARSpawn.toInt(data["coinValue"]) ?? 0
-        self.pointValue = ARSpawn.toInt(data["point"]) ?? ARSpawn.toInt(data["points"]) ?? ARSpawn.toInt(data["point_value"]) ?? 0
-        self.catchableTime = max(1, ARSpawn.toInt(data["catchable_time"]) ?? ARSpawn.toInt(data["catchableTime"]) ?? 1)
-        self.respawnDays = max(1, ARSpawn.toInt(data["respawn_days"]) ?? ARSpawn.toInt(data["respawnDays"]) ?? 1)
-        self.previewImagePath = data["previewImagePath"] as? String ?? data["preview_path"] as? String
+        self.coinValue = ARSpawn.toInt(data["coin_value"]) ?? 0
+        self.pointValue = ARSpawn.toInt(data["point"]) ?? 0
+        self.catchableTime = max(1, ARSpawn.toInt(data["catchable_time"]) ?? 1)
+        self.respawnDays = max(1, ARSpawn.toInt(data["respawn_days"]) ?? 1)
+        self.preview = data["preview"] as? String
     }
 
     private static func toDouble(_ value: Any?) -> Double? {
