@@ -28,16 +28,22 @@ class AuthenticationManager: ObservableObject {
     private let auth = Auth.auth()
     private let db = Firestore.firestore()
     private let notificationManager = NotificationManager.shared
+    private var userProfileListener: ListenerRegistration?
     
     init() {
         // Check if user is already signed in
         checkAuthenticationState()
+    }
+
+    deinit {
+        userProfileListener?.remove()
     }
     
     func checkAuthenticationState() {
         if let currentUser = auth.currentUser {
             self.user = currentUser
             self.isAuthenticated = true
+            notificationManager.startListeningForUserNotifications(userId: currentUser.uid)
             // Determine role and fetch profile
             detectRoleAndFetchProfile(uid: currentUser.uid)
         } else {
@@ -45,6 +51,7 @@ class AuthenticationManager: ObservableObject {
             self.isProfileComplete = false
             self.role = .unknown
             self.isCheckingAuth = false
+            notificationManager.stopListeningForUserNotifications()
         }
     }
     
@@ -93,6 +100,7 @@ class AuthenticationManager: ObservableObject {
             self.isAuthenticated = true
             self.isProfileComplete = true
             self.isCheckingAuth = false
+            notificationManager.startListeningForUserNotifications(userId: authResult.user.uid)
             
             await notificationManager.registerDeviceForNotifications(userId: authResult.user.uid)
         } catch {
@@ -261,6 +269,7 @@ class AuthenticationManager: ObservableObject {
             
             self.user = authResult.user
             self.isAuthenticated = true
+            notificationManager.startListeningForUserNotifications(userId: authResult.user.uid)
             
             if requiredRole == .announcer {
                 // Explicit announcer sign-in path
@@ -346,7 +355,8 @@ class AuthenticationManager: ObservableObject {
     
     // MARK: - Fetch User Profile
     func fetchUserProfile(uid: String) {
-        db.collection("users").document(uid).getDocument { [weak self] snapshot, error in
+        userProfileListener?.remove()
+        userProfileListener = db.collection("users").document(uid).addSnapshotListener { [weak self] snapshot, error in
             guard let self = self else { return }
             
             Task { @MainActor in
@@ -360,10 +370,15 @@ class AuthenticationManager: ObservableObject {
                 
                 if let _ = snapshot?.data() {
                     if let profile = self.mapUserProfile(snapshot: snapshot!) {
+                        let previousProfile = self.userProfile
                         self.userProfile = profile
                         self.role = .user
                         self.isProfileComplete = true
                         self.isCheckingAuth = false
+                        self.emitModerationNotificationsIfNeeded(
+                            oldProfile: previousProfile,
+                            newProfile: profile
+                        )
                     } else {
                         print("Error decoding user profile. Falling back to incomplete profile flow.")
                         self.isProfileComplete = false
@@ -375,6 +390,40 @@ class AuthenticationManager: ObservableObject {
                     self.role = .user  // Default to user for profile creation
                     self.isCheckingAuth = false
                 }
+            }
+        }
+    }
+
+    private func emitModerationNotificationsIfNeeded(oldProfile: User?, newProfile: User) {
+        guard let oldProfile else { return }
+
+        if newProfile.warningCount > oldProfile.warningCount {
+            let delta = newProfile.warningCount - oldProfile.warningCount
+            notificationManager.addInAppNotification(
+                id: "warn_\(newProfile.id ?? "user")_\(newProfile.warningCount)",
+                title: "Warning Received",
+                body: delta == 1
+                    ? "Your account received a warning."
+                    : "Your account received \(delta) new warnings."
+            )
+        }
+
+        if newProfile.status != oldProfile.status {
+            switch newProfile.status {
+            case .suspended:
+                notificationManager.addInAppNotification(
+                    id: "status_\(newProfile.id ?? "user")_suspended",
+                    title: "Account Suspended",
+                    body: "Your account has been suspended by admin."
+                )
+            case .banned:
+                notificationManager.addInAppNotification(
+                    id: "status_\(newProfile.id ?? "user")_banned",
+                    title: "Account Banned",
+                    body: "Your account has been banned by admin."
+                )
+            case .active:
+                break
             }
         }
     }
@@ -543,6 +592,9 @@ class AuthenticationManager: ObservableObject {
         do {
             try auth.signOut()
             GIDSignIn.sharedInstance.signOut()
+            userProfileListener?.remove()
+            userProfileListener = nil
+            notificationManager.stopListeningForUserNotifications()
             self.user = nil
             self.userProfile = nil
             self.isAuthenticated = false

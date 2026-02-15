@@ -2,20 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>AUGO needs your location to show your posts on the campus map and help you discover nearby content.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>AUGO needs your location to show your posts on the campus map and help you discover nearby content.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>AUGO needs camera access to show AR objects at nearby locations.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>AUGO needs access to your photo library so you can attach photos to posts.</string>
-	<key>FirebaseAppDelegateProxyEnabled</key>
-	<false/>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>remote-notification</string>
-	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -28,6 +14,12 @@
 				<string>com.googleusercontent.apps.725089765922-4avllhgdh56mkfqfiq8gdag958agi2h5</string>
 			</array>
 		</dict>
+	</array>
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<false/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
 	</array>
 </dict>
 </plist>

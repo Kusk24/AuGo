@@ -77,6 +77,9 @@ class PostManager: ObservableObject {
     private var allPostsListener: ListenerRegistration?
     private var adminConfigCache: AdminConfiguration = .default
     private var lastAdminConfigFetch: Date?
+    private let notificationManager = NotificationManager.shared
+    private var lastKnownUserPostReactions: [String: (likes: Int, dislikes: Int)] = [:]
+    private var didPrimeUserPostReactions = false
     
     init() {
         // Start listening for all posts immediately when manager is created
@@ -370,6 +373,8 @@ class PostManager: ObservableObject {
         userPostsListener?.remove()
         listeningUserPostsForUserId = userId
         isUserPostsLoading = true
+        didPrimeUserPostReactions = false
+        lastKnownUserPostReactions = [:]
         
         print("🔄 Setting up real-time listener for user \(userId) posts")
         
@@ -401,6 +406,7 @@ class PostManager: ObservableObject {
                     }
                     
                     print("✅ Successfully parsed \(parsed.count) posts for user")
+                    self.emitReactionNotificationsIfNeeded(posts: parsed)
                     self.userPosts = parsed
                     self.isUserPostsLoading = false
                     
@@ -410,6 +416,51 @@ class PostManager: ObservableObject {
                     }
                 }
             }
+    }
+
+    private func emitReactionNotificationsIfNeeded(posts: [Post]) {
+        let currentMap: [String: (likes: Int, dislikes: Int)] = Dictionary(
+            uniqueKeysWithValues: posts.compactMap { post in
+                guard let id = post.id else { return nil }
+                return (id, (likes: post.likeCount, dislikes: post.dislikeCount))
+            }
+        )
+
+        defer {
+            lastKnownUserPostReactions = currentMap
+            didPrimeUserPostReactions = true
+        }
+
+        guard didPrimeUserPostReactions else { return }
+
+        for post in posts {
+            guard let postID = post.id else { continue }
+            let old = lastKnownUserPostReactions[postID] ?? (likes: 0, dislikes: 0)
+            let newLikes = max(0, post.likeCount - old.likes)
+            let newDislikes = max(0, post.dislikeCount - old.dislikes)
+            let postPreview = post.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            let postText = postPreview.isEmpty ? "your post" : "\"\(String(postPreview.prefix(32)))\""
+
+            if newLikes > 0 {
+                notificationManager.addInAppNotification(
+                    id: "post_like_\(postID)_\(post.likeCount)",
+                    title: "New Like",
+                    body: newLikes == 1
+                        ? "\(postText) got 1 new like."
+                        : "\(postText) got \(newLikes) new likes."
+                )
+            }
+
+            if newDislikes > 0 {
+                notificationManager.addInAppNotification(
+                    id: "post_dislike_\(postID)_\(post.dislikeCount)",
+                    title: "New Dislike",
+                    body: newDislikes == 1
+                        ? "\(postText) got 1 new dislike."
+                        : "\(postText) got \(newDislikes) new dislikes."
+                )
+            }
+        }
     }
     
     // MARK: - Fetch All Posts (Real-time - Visibility duration)

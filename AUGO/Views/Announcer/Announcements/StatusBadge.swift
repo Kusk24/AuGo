@@ -21,6 +21,7 @@ struct StatusBadge: View {
         case .active: return .green
         case .declined: return .red
         case .expired: return .gray
+        default : return .gray
         }
     }
 }

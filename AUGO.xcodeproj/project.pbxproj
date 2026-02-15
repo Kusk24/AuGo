@@ -56,6 +56,7 @@
 		C576E48C2F3A6CAA0057A27C /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C576E48B2F3A6CAA0057A27C /* NotificationManager.swift */; };
 		C576E48E2F3A6CF30057A27C /* AnnouncerAnnouncementsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C576E48D2F3A6CF30057A27C /* AnnouncerAnnouncementsViewModel.swift */; };
 		C576E4912F3A70F30057A27C /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = C576E4902F3A70F30057A27C /* FirebaseMessaging */; };
+		C576E4932F424C630057A27C /* NotificationListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C576E4922F424C630057A27C /* NotificationListView.swift */; };
 		C5FAEAD22EE5988200ED4C27 /* Announcer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5FAEAD12EE5988200ED4C27 /* Announcer.swift */; };
 		C5FAEAD42EE5988D00ED4C27 /* Post.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5FAEAD32EE5988D00ED4C27 /* Post.swift */; };
 		C5FAEAD62EE5989400ED4C27 /* Report.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5FAEAD52EE5989400ED4C27 /* Report.swift */; };
@@ -111,6 +112,7 @@
 		C576E4892F3A6CA60057A27C /* AnnouncerAnnouncementFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncerAnnouncementFilter.swift; sourceTree = "<group>"; };
 		C576E48B2F3A6CAA0057A27C /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
 		C576E48D2F3A6CF30057A27C /* AnnouncerAnnouncementsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncerAnnouncementsViewModel.swift; sourceTree = "<group>"; };
+		C576E4922F424C630057A27C /* NotificationListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationListView.swift; sourceTree = "<group>"; };
 		C5FAEAD12EE5988200ED4C27 /* Announcer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Announcer.swift; sourceTree = "<group>"; };
 		C5FAEAD32EE5988D00ED4C27 /* Post.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Post.swift; sourceTree = "<group>"; };
 		C5FAEAD52EE5989400ED4C27 /* Report.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Report.swift; sourceTree = "<group>"; };
@@ -160,6 +162,7 @@
 				0ADE15652EDF642D00F8D6A6 /* ViewModels */,
 				0A48E4AE2EE00610001A4908 /* Managers */,
 				0A48E4712ECCE957001A4908 /* Views */,
+				C576E4922F424C630057A27C /* NotificationListView.swift */,
 				0ADE155B2EDDFBC700F8D6A6 /* Models */,
 				0A48E4722ECCE961001A4908 /* Helpers */,
 				0A48E4702ECCE94A001A4908 /* Resources */,
@@ -459,6 +462,7 @@
 				C576E47F2F3A6C980057A27C /* HomeView.swift in Sources */,
 				C576E4802F3A6C980057A27C /* ProfileView.swift in Sources */,
 				C576E4812F3A6C980057A27C /* PostAnnotationView.swift in Sources */,
+				C576E4932F424C630057A27C /* NotificationListView.swift in Sources */,
 				C576E4822F3A6C980057A27C /* LocationManager.swift in Sources */,
 				C576E48A2F3A6CA60057A27C /* AnnouncerAnnouncementFilter.swift in Sources */,
 				C576E4832F3A6C980057A27C /* UserInfoFormView.swift in Sources */,
@@ -603,12 +607,17 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 34A776945Y;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = AUGO/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "AUGO needs camera access to show AR objects at nearby locations.";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "AUGO needs your location to show your posts on the campus map and help you discover nearby content.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "AUGO needs your location to show your posts on the campus map and help you discover nearby content.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "AUGO needs access to your photo library so you can attach photos to posts.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -620,8 +629,9 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.seniorproject1.augo;
+				PRODUCT_BUNDLE_IDENTIFIER = com.au.seniorproject1.augo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -637,12 +647,17 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 34A776945Y;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = AUGO/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "AUGO needs camera access to show AR objects at nearby locations.";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "AUGO needs your location to show your posts on the campus map and help you discover nearby content.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "AUGO needs your location to show your posts on the campus map and help you discover nearby content.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "AUGO needs access to your photo library so you can attach photos to posts.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -654,8 +669,9 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.seniorproject1.augo;
+				PRODUCT_BUNDLE_IDENTIFIER = com.au.seniorproject1.augo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;

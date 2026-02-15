@@ -6,11 +6,13 @@ struct AnnouncerCampusMapView: View {
     
     @EnvironmentObject var announcementCenter: AnnouncementCenter
     @EnvironmentObject var campusMapViewModel: CampusMapViewModel
+    @EnvironmentObject var notificationManager: NotificationManager
     
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var selectedAnnouncement: Announcement?
     @State private var showSingleAnnouncement = false
     @State private var isPresentingCreateAnnouncement = false
+    @State private var showNotificationList = false
     
     var body: some View {
         ZStack {
@@ -75,17 +77,20 @@ struct AnnouncerCampusMapView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
-                    announcementCenter.markAllAsRead()
-                    showAnnouncement = true
+                    showNotificationList = true
                 } label: {
                     Image(systemName:
-                        announcementCenter.unreadCount > 0
+                        !notificationManager.receivedNotifications.isEmpty
                         ? "bell.badge.fill"
                         : "bell.fill"
                     )
                     .foregroundColor(Color.Brand.primary)
                 }
             }
+        }
+        .sheet(isPresented: $showNotificationList) {
+            NotificationListView()
+                .environmentObject(notificationManager)
         }
         .sheet(isPresented: $showSingleAnnouncement) {
             if let ann = selectedAnnouncement {

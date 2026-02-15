@@ -1,6 +1,8 @@
 import SwiftUI
+import FirebaseAuth
 
 struct RootTabView: View {
+    @EnvironmentObject var authManager: AuthenticationManager
     @State private var showAnnouncement = false
     
     @StateObject private var announcementCenter = AnnouncementCenter()
@@ -65,6 +67,16 @@ struct RootTabView: View {
                 AnnouncementOverlay(isShowing: $showAnnouncement)
                     .environmentObject(announcementCenter)
                     .zIndex(1)
+            }
+        }
+        .onAppear {
+            if let userId = authManager.user?.uid {
+                postManager.fetchUserPosts(userId: userId)
+            }
+        }
+        .onChange(of: authManager.user?.uid) { _, newUserID in
+            if let userId = newUserID {
+                postManager.fetchUserPosts(userId: userId)
             }
         }
     }

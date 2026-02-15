@@ -43,7 +43,7 @@ final class AnnouncementCenter: ObservableObject {
     
     private func listenToActiveAnnouncements() {
         listener = db.collection("announcements")
-            .whereField("status", isEqualTo: "active")
+            .whereField("status", in: ["approved", "active"])
             .addSnapshotListener { [weak self] snapshot, error in
                 guard let self else { return }
                 
@@ -57,8 +57,12 @@ final class AnnouncementCenter: ObservableObject {
                     return
                 }
                 
+                let now = Date()
                 self.announcements = documents.compactMap { doc in
                     self.parseAnnouncement(doc)
+                }
+                .filter { ann in
+                    ann.startDate <= now && now <= ann.endDate
                 }
                 .sorted { $0.createdAt > $1.createdAt }
             }

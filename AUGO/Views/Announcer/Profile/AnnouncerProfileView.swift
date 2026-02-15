@@ -39,9 +39,13 @@ struct AnnouncerProfileView: View {
                     authManager.signOut()
                 } label: {
                     Text("Sign Out")
+                        .font(.headline)
+                        .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color.red)
+                        .cornerRadius(12)
                 }
-                .buttonStyle(.bordered)
                 .padding(.top, 12)
                 
                 Spacer()

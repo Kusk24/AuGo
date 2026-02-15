@@ -5,6 +5,7 @@ enum AnnouncementStatus: String, Codable {
     case pending
     case approved
     case declined
+    case rejected
     case active
     case expired
 }

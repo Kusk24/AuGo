@@ -6,7 +6,6 @@ struct UserInfoFormView: View {
     @EnvironmentObject var router: AppRouter
     @EnvironmentObject var authManager: AuthenticationManager
     
-    @State private var studentID = ""
     @State private var nickname = ""
     @State private var realName = ""
     @State private var selectedMajor = "Computer Science"
@@ -57,13 +56,11 @@ struct UserInfoFormView: View {
                     // MARK: Form Fields
                     VStack(spacing: 20) {
                         // Student ID
-                        FormField(
+                        ReadOnlyFormField(
                             label: "Student ID",
                             icon: "number",
-                            placeholder: "Enter your student ID",
-                            text: $studentID
+                            value: derivedStudentID.isEmpty ? "No ID found in email" : derivedStudentID
                         )
-                        .keyboardType(.numberPad)
                         
                         // Real Name
                         FormField(
@@ -228,9 +225,19 @@ struct UserInfoFormView: View {
     
     // MARK: - Validation
     var isFormValid: Bool {
-        !studentID.isEmpty &&
+        !derivedStudentID.isEmpty &&
         !realName.isEmpty &&
         !nickname.isEmpty
+    }
+
+    private var derivedStudentID: String {
+        guard let email = authManager.user?.email else { return "" }
+        let localPart = email.split(separator: "@").first.map(String.init) ?? ""
+        let trimmedPrefix = localPart.hasPrefix("u") || localPart.hasPrefix("U")
+            ? String(localPart.dropFirst())
+            : localPart
+        let digits = trimmedPrefix.filter(\.isNumber)
+        return digits
     }
     
     // MARK: - Save Profile
@@ -255,7 +262,7 @@ struct UserInfoFormView: View {
         
         let profile = User(
             id: uid,
-            studentID: studentID,
+            studentID: derivedStudentID,
             name: realName,
             nickname: nickname,
             email: email,
@@ -304,6 +311,33 @@ struct FormField: View {
                 RoundedRectangle(cornerRadius: 12)
                     .stroke(Color.Brand.primary.opacity(0.2), lineWidth: 1)
             )
+        }
+    }
+}
+
+struct ReadOnlyFormField: View {
+    let label: String
+    let icon: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(label, systemImage: icon)
+                .font(.subheadline.weight(.medium))
+                .foregroundColor(.primary)
+
+            Text(value)
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color(UIColor.systemGray6))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.Brand.primary.opacity(0.18), lineWidth: 1)
+                )
         }
     }
 }

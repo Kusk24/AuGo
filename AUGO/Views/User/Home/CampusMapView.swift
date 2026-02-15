@@ -24,6 +24,7 @@ struct CampusMapView: View {
     @EnvironmentObject var announcementCenter: AnnouncementCenter
     @EnvironmentObject var postManager: PostManager
     @EnvironmentObject var authManager: AuthenticationManager
+    @EnvironmentObject var notificationManager: NotificationManager
 
     @State private var cameraPosition: MapCameraPosition = .automatic
 
@@ -272,7 +273,7 @@ struct CampusMapView: View {
     }
     
     private var notificationIcon: some View {
-        let hasUnread = announcementCenter.unreadCount > 0
+        let hasUnread = !notificationManager.receivedNotifications.isEmpty || announcementCenter.unreadCount > 0
         return Image(systemName: hasUnread ? "bell.badge.fill" : "bell.fill")
             .symbolRenderingMode(hasUnread ? .palette : .monochrome)
             .foregroundStyle(
@@ -741,6 +742,10 @@ struct CampusMapView: View {
             Button("OK", role: .cancel) { }
         } message: {
             Text(alertMessage)
+        }
+        .sheet(isPresented: $showNotificationList) {
+            NotificationListView()
+                .environmentObject(notificationManager)
         }
     }
 

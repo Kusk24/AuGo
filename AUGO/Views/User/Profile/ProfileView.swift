@@ -6,8 +6,8 @@ struct ProfileView: View {
     
     @EnvironmentObject var authManager: AuthenticationManager
     @EnvironmentObject var postManager: PostManager
+    @EnvironmentObject var notificationManager: NotificationManager
 
-    @State private var notificationsOn = true
     @State private var showLogoutAlert = false
     @State private var userRank: Int = 0
     @State private var showDeleteAlert = false
@@ -261,7 +261,10 @@ struct ProfileView: View {
 
                             Spacer()
 
-                            Toggle("", isOn: $notificationsOn)
+                            Toggle("", isOn: Binding(
+                                get: { notificationManager.notificationsEnabled },
+                                set: { notificationManager.setNotificationsEnabled($0) }
+                            ))
                                 .labelsHidden()
                                 .tint(Color.Brand.primary)
                         }
@@ -598,12 +601,22 @@ private struct CapturedCharacterCard: View {
         return "Ready again · +\(coinsText(capture.coinValue)) coins · +\(capture.pointValue) pts"
     }
 
-    var body: some View {
-        VStack(spacing: 0) {
+    private var progress: Double {
+        guard capture.catchableTime > 0 else { return 1 }
+        return min(1, Double(capture.catchCount) / Double(capture.catchableTime))
+    }
 
-            // TOP
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
             ZStack {
-                Color(UIColor.systemGray6)
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.Brand.primary.opacity(0.18), Color.Brand.primary.opacity(0.06)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
 
                 if let previewURL {
                     AsyncImage(url: previewURL) { phase in
@@ -625,57 +638,52 @@ private struct CapturedCharacterCard: View {
                     placeholderView
                 }
             }
-            .frame(height: 130)
-            .clipShape(
-                RoundedCorner(radius: 14, corners: [.topLeft, .topRight])
-            )
+            .frame(height: 135)
 
-            // BOTTOM
-            ZStack {
-                Color(.white)
+            Text(capture.title)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
 
-                Text("\(capture.title) · \(capture.catchCount)/\(capture.catchableTime)")
-                    .font(.subheadline)
-                    .foregroundColor(.primary)
-            }
-            .frame(height: 40)
-            .clipShape(
-                RoundedCorner(radius: 14, corners: [.bottomLeft, .bottomRight])
-            )
+            Text("\(capture.catchCount)/\(capture.catchableTime) captured")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            ProgressView(value: progress)
+                .tint(Color.Brand.primary)
 
             Text(footerText)
                 .font(.caption)
-                .foregroundColor(.gray)
-                .padding(.vertical, 8)
-                .frame(maxWidth: .infinity)
-                .background(Color.white)
+                .foregroundColor(.secondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(width: 150)
-        .shadow(color: .black.opacity(0.06), radius: 4, y: 3)
+        .padding(12)
+        .frame(width: 180)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.white)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color(UIColor.systemGray5), lineWidth: 1)
+                )
+        )
+        .shadow(color: .black.opacity(0.05), radius: 4, y: 2)
     }
 
     private var placeholderView: some View {
-        VStack(spacing: 6) {
-            Image(systemName: "cube.box.fill")
-                .font(.system(size: 30))
-                .foregroundColor(Color.Brand.primary.opacity(0.8))
-            Text(String(capture.title.prefix(1)).uppercased())
-                .font(.headline)
+        VStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(Color.Brand.primary.opacity(0.18))
+                    .frame(width: 54, height: 54)
+                Text(String(capture.title.prefix(1)).uppercased())
+                    .font(.title3.weight(.bold))
+                    .foregroundColor(Color.Brand.primary)
+            }
+
+            Text("Preview not added")
+                .font(.caption2)
                 .foregroundColor(.secondary)
         }
-    }
-}
-
-struct RoundedCorner: Shape {
-    var radius: CGFloat
-    var corners: UIRectCorner
-
-    func path(in rect: CGRect) -> Path {
-        let path = UIBezierPath(
-            roundedRect: rect,
-            byRoundingCorners: corners,
-            cornerRadii: CGSize(width: radius, height: radius)
-        )
-        return Path(path.cgPath)
     }
 }

@@ -11,12 +11,17 @@ class NotificationManager: NSObject, ObservableObject {
     @Published var fcmToken: String?
     @Published var notificationPermissionGranted = false
     @Published var receivedNotifications: [PushNotification] = []
+    @Published var notificationsEnabled: Bool
     
     private let db = Firestore.firestore()
+    private var userNotificationsListener: ListenerRegistration?
+    private var listeningUserID: String?
+    private static let notificationsEnabledKey = "notifications_enabled"
     
     static let shared = NotificationManager()
     
     override init() {
+        self.notificationsEnabled = UserDefaults.standard.object(forKey: Self.notificationsEnabledKey) as? Bool ?? true
         super.init()
         setupNotifications()
     }
@@ -54,12 +59,111 @@ class NotificationManager: NSObject, ObservableObject {
     
     // MARK: - Register Device for Notifications
     func registerDeviceForNotifications(userId: String) async {
+        guard notificationsEnabled else {
+            print("🔕 Notification preference is OFF")
+            return
+        }
         let granted = await requestNotificationPermission()
         guard granted else {
             print("⚠️ Cannot register device - permission not granted")
             return
         }
         print("✅ Device registered for notifications")
+    }
+
+    func startListeningForUserNotifications(userId: String) {
+        listeningUserID = userId
+        guard notificationsEnabled else {
+            userNotificationsListener?.remove()
+            userNotificationsListener = nil
+            return
+        }
+        userNotificationsListener?.remove()
+        userNotificationsListener = db.collection("user_notifications")
+            .whereField("userId", isEqualTo: userId)
+            .order(by: "createdAt", descending: true)
+            .limit(to: 100)
+            .addSnapshotListener { [weak self] snapshot, error in
+                guard let self else { return }
+                Task { @MainActor in
+                    if let error {
+                        print("❌ user_notifications listener error: \(error.localizedDescription)")
+                        return
+                    }
+
+                    guard let documents = snapshot?.documents else { return }
+                    for doc in documents {
+                        let data = doc.data()
+                        let title = (data["title"] as? String) ?? "Notification"
+                        let body = (data["body"] as? String) ?? ""
+                        let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+                        self.upsertNotification(
+                            PushNotification(
+                                id: doc.documentID,
+                                title: title,
+                                body: body,
+                                data: data.reduce(into: [AnyHashable: Any]()) { result, item in
+                                    result[item.key] = item.value
+                                },
+                                receivedAt: createdAt
+                            )
+                        )
+                    }
+                }
+            }
+    }
+
+    func stopListeningForUserNotifications() {
+        userNotificationsListener?.remove()
+        userNotificationsListener = nil
+        listeningUserID = nil
+        receivedNotifications = []
+    }
+
+    func setNotificationsEnabled(_ enabled: Bool) {
+        notificationsEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: Self.notificationsEnabledKey)
+        if enabled {
+            if let uid = listeningUserID {
+                startListeningForUserNotifications(userId: uid)
+                Task {
+                    await registerDeviceForNotifications(userId: uid)
+                }
+            }
+        } else {
+            userNotificationsListener?.remove()
+            userNotificationsListener = nil
+        }
+    }
+
+    func addInAppNotification(
+        id: String = UUID().uuidString,
+        title: String,
+        body: String,
+        data: [AnyHashable: Any] = [:]
+    ) {
+        guard notificationsEnabled else { return }
+        upsertNotification(
+            PushNotification(
+                id: id,
+                title: title,
+                body: body,
+                data: data,
+                receivedAt: Date()
+            )
+        )
+    }
+
+    private func upsertNotification(_ notification: PushNotification) {
+        if let existingIndex = receivedNotifications.firstIndex(where: { $0.id == notification.id }) {
+            receivedNotifications[existingIndex] = notification
+        } else {
+            receivedNotifications.insert(notification, at: 0)
+        }
+        receivedNotifications.sort { $0.receivedAt > $1.receivedAt }
+        if receivedNotifications.count > 200 {
+            receivedNotifications = Array(receivedNotifications.prefix(200))
+        }
     }
     
     // MARK: - Handle Notification Tap
@@ -96,9 +200,10 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
                 id: id,
                 title: title,
                 body: body,
-                data: payload
+                data: payload,
+                receivedAt: Date()
             )
-            self.receivedNotifications.insert(pushNotification, at: 0)
+            self.upsertNotification(pushNotification)
         }
         
         // Show notification even when app is in foreground
@@ -129,7 +234,8 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
                 id: id,
                 title: title,
                 body: body,
-                data: payload
+                data: payload,
+                receivedAt: Date()
             )
             self.handleNotificationTap(pushNotification)
         }
@@ -146,12 +252,12 @@ struct PushNotification: Identifiable, Codable {
     let data: [AnyHashable: Any]
     let receivedAt: Date
     
-    init(id: String, title: String, body: String, data: [AnyHashable: Any]) {
+    init(id: String, title: String, body: String, data: [AnyHashable: Any], receivedAt: Date = Date()) {
         self.id = id
         self.title = title
         self.body = body
         self.data = data
-        self.receivedAt = Date()
+        self.receivedAt = receivedAt
     }
     
     // Custom coding keys to handle [AnyHashable: Any]
