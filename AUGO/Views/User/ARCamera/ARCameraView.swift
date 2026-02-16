@@ -44,7 +44,7 @@ struct ARCameraView: View {
                     Button {
                         viewModel.togglePostsOverlayInCharacter()
                     } label: {
-                        Text(viewModel.showPostsInCharacter ? "Hide Posts" : "Show Posts")
+                        Text(viewModel.showPostsInCharacter ? "Hide Post Overlay" : "Show Post Overlay")
                             .font(.footnote.weight(.semibold))
                             .foregroundColor(.white)
                             .padding(.horizontal, 10)
@@ -62,6 +62,12 @@ struct ARCameraView: View {
                 Text(viewModel.statusText)
                     .font(.subheadline)
                     .foregroundColor(.white)
+
+                if viewModel.contentMode == .character {
+                    Text(viewModel.characterRangeText)
+                        .font(.footnote)
+                        .foregroundColor(.white.opacity(0.9))
+                }
 
                 if let distanceText = viewModel.distanceText {
                     Text(distanceText)
@@ -159,6 +165,8 @@ private struct ARRealityContainerView: UIViewRepresentable {
         private var baseCharacterScale: SIMD3<Float>?
         private var postAnchors: [String: AnchorEntity] = [:]
         private var postCards: [String: UIHostingController<ARNearbyPostCard>] = [:]
+        private var postPriority: [String: Int] = [:]
+        private var smoothedCardFrames: [String: CGRect] = [:]
         private var displayLink: CADisplayLink?
         private let floatingStartTime = CACurrentMediaTime()
         var onCapture: () -> Void
@@ -184,11 +192,13 @@ private struct ARRealityContainerView: UIViewRepresentable {
 
         func updateFloatingPosts(_ posts: [ARNearbyPost]) {
             guard let arView else { return }
+            postPriority = Dictionary(uniqueKeysWithValues: posts.enumerated().map { ($0.element.id, $0.offset) })
 
             let activeIDs = Set(posts.map(\.id))
             for existingID in postAnchors.keys where !activeIDs.contains(existingID) {
                 postAnchors[existingID]?.removeFromParent()
                 postAnchors.removeValue(forKey: existingID)
+                smoothedCardFrames.removeValue(forKey: existingID)
 
                 postCards[existingID]?.view.removeFromSuperview()
                 postCards.removeValue(forKey: existingID)
@@ -206,7 +216,7 @@ private struct ARRealityContainerView: UIViewRepresentable {
 
                 let host = UIHostingController(rootView: ARNearbyPostCard(post: post))
                 host.view.backgroundColor = .clear
-                host.view.frame = CGRect(x: 0, y: 0, width: 280, height: 230)
+                host.view.frame = CGRect(x: 0, y: 0, width: 230, height: 180)
                 arView.addSubview(host.view)
                 postCards[post.id] = host
             }
@@ -251,18 +261,101 @@ private struct ARRealityContainerView: UIViewRepresentable {
             guard let arView else { return }
 
             let t = CACurrentMediaTime() - floatingStartTime
-            for (id, anchor) in postAnchors {
+            let bounds = arView.bounds.insetBy(dx: 8, dy: 8)
+            let visibilityBounds = arView.bounds.insetBy(dx: -140, dy: -140)
+
+            let sortedIDs = postAnchors.keys.sorted {
+                (postPriority[$0] ?? .max) < (postPriority[$1] ?? .max)
+            }
+
+            var preferredFrames: [(id: String, frame: CGRect)] = []
+            for id in sortedIDs {
+                guard let anchor = postAnchors[id] else { continue }
                 guard let host = postCards[id] else { continue }
                 let worldPosition = anchor.position(relativeTo: nil)
                 guard let projected = arView.project(worldPosition) else {
                     host.view.isHidden = true
                     continue
                 }
+                // Do not pin off-screen cards; hide until user looks toward them.
+                if !visibilityBounds.contains(CGPoint(x: projected.x, y: projected.y)) {
+                    host.view.isHidden = true
+                    continue
+                }
 
-                let bob = CGFloat(sin(t * 1.7 + Double(abs(id.hashValue % 7))) * 8.0)
-                host.view.isHidden = false
-                host.view.center = CGPoint(x: projected.x, y: projected.y + bob)
+                let bob = CGFloat(sin(t * 1.7 + Double(abs(id.hashValue % 7))) * 6.0)
+                let size = host.view.bounds.size == .zero ? CGSize(width: 230, height: 180) : host.view.bounds.size
+                let frame = CGRect(
+                    x: projected.x - (size.width / 2),
+                    y: projected.y + bob - (size.height / 2),
+                    width: size.width,
+                    height: size.height
+                )
+                preferredFrames.append((id: id, frame: frame))
             }
+
+            // Soft collision resolution: keep all cards visible, push overlapping cards apart.
+            var resolvedFrames = preferredFrames
+            if resolvedFrames.count > 1 {
+                for _ in 0..<8 {
+                    for i in 0..<resolvedFrames.count {
+                        for j in 0..<i {
+                            let a = resolvedFrames[i].frame
+                            let b = resolvedFrames[j].frame
+                            let overlap = a.insetBy(dx: -10, dy: -10).intersection(b.insetBy(dx: -10, dy: -10))
+                            guard !overlap.isNull, overlap.width > 0, overlap.height > 0 else { continue }
+
+                            let ac = CGPoint(x: a.midX, y: a.midY)
+                            let bc = CGPoint(x: b.midX, y: b.midY)
+                            var dx = ac.x - bc.x
+                            var dy = ac.y - bc.y
+                            if abs(dx) < 0.01 && abs(dy) < 0.01 {
+                                dx = (i % 2 == 0) ? 1 : -1
+                                dy = (j % 2 == 0) ? 1 : -1
+                            }
+                            let length = max(sqrt(dx * dx + dy * dy), 0.001)
+                            let push = min(max(overlap.width, overlap.height) * 0.32, 22)
+                            let offsetX = (dx / length) * push
+                            let offsetY = (dy / length) * push
+
+                            var moved = resolvedFrames[i].frame
+                            moved.origin.x += offsetX
+                            moved.origin.y += offsetY
+                            resolvedFrames[i].frame = moved
+                        }
+                    }
+                }
+            }
+
+            for (rank, item) in resolvedFrames.enumerated() {
+                guard let host = postCards[item.id] else { continue }
+                host.view.isHidden = false
+                let previous = smoothedCardFrames[item.id] ?? item.frame
+                let smoothed = CGRect(
+                    x: previous.origin.x + (item.frame.origin.x - previous.origin.x) * 0.24,
+                    y: previous.origin.y + (item.frame.origin.y - previous.origin.y) * 0.24,
+                    width: item.frame.width,
+                    height: item.frame.height
+                )
+                let clamped = clamp(smoothed, to: bounds)
+                smoothedCardFrames[item.id] = clamped
+                host.view.frame = clamped
+                // Keep nearest cards slightly more prominent without hiding others.
+                host.view.alpha = rank < 3 ? 1.0 : 0.92
+            }
+
+            // Hide cards that were not visible in this tick.
+            let visibleIDs = Set(resolvedFrames.map(\.id))
+            for (id, host) in postCards where !visibleIDs.contains(id) {
+                host.view.isHidden = true
+            }
+        }
+
+        private func clamp(_ frame: CGRect, to bounds: CGRect) -> CGRect {
+            var clamped = frame
+            clamped.origin.x = min(max(clamped.origin.x, bounds.minX), bounds.maxX - clamped.width)
+            clamped.origin.y = min(max(clamped.origin.y, bounds.minY), bounds.maxY - clamped.height)
+            return clamped
         }
 
         func render(modelEntity: ModelEntity, renderSpawnID: String?) {
@@ -355,6 +448,16 @@ private struct ARRealityContainerView: UIViewRepresentable {
 }
 
 private final class ARCameraViewModel: ObservableObject {
+    struct ARAdminConfiguration {
+        let postVisibleRangeMeters: Double
+        let postVisibilityDurationHours: Int
+
+        static let `default` = ARAdminConfiguration(
+            postVisibleRangeMeters: 30,
+            postVisibilityDurationHours: 24
+        )
+    }
+
     @Published var contentMode: ARContentMode = .character
     @Published var titleText = "AR Hunt"
     @Published var statusText = "Loading nearby AR spawn..."
@@ -366,6 +469,7 @@ private final class ARCameraViewModel: ObservableObject {
     @Published var characterVisualScale: CGFloat = 1.0
     @Published var rewardInfoText: String?
     @Published var catchInstructionText = "Get inside catch radius to start combo"
+    @Published var characterRangeText = "Character range: 100 m"
     @Published var nearbyPosts: [ARNearbyPost] = []
     @Published var showPostsInCharacter = false
 
@@ -387,6 +491,8 @@ private final class ARCameraViewModel: ObservableObject {
     private var isCaptureProcessing = false
     private let maxRenderableHorizontalAccuracy: CLLocationAccuracy = 30
     private let maxCatchHorizontalAccuracy: CLLocationAccuracy = 15
+    private var arAdminConfigCache: ARAdminConfiguration = .default
+    private var lastARAdminConfigFetch: Date?
 
     var shouldRenderPostOverlays: Bool {
         contentMode == .posts || (contentMode == .character && showPostsInCharacter)
@@ -413,6 +519,11 @@ private final class ARCameraViewModel: ObservableObject {
         errorText = nil
         switch mode {
         case .character:
+            titleText = "Nearby Character"
+            statusText = "Locating nearest character..."
+            distanceText = nil
+            rewardInfoText = nil
+            characterRangeText = "Character range: 100 m"
             if showPostsInCharacter {
                 startNearbyPostsMonitoring()
             } else {
@@ -425,6 +536,9 @@ private final class ARCameraViewModel: ObservableObject {
                 await loadNearestSpawnAndAssetIfNeeded()
             }
         case .posts:
+            Task { [weak self] in
+                _ = await self?.loadARAdminConfiguration(forceRefresh: true)
+            }
             loadSpawnTask?.cancel()
             distanceMonitorTask?.cancel()
             canRenderModel = false
@@ -545,12 +659,15 @@ private final class ARCameraViewModel: ObservableObject {
 
     @MainActor
     private func loadNearestSpawnAndAssetIfNeeded() async {
+        if Task.isCancelled { return }
         errorText = nil
         do {
             let spawn = try await fetchNearestActiveSpawn()
+            if Task.isCancelled { return }
             activeSpawn = spawn
             titleText = spawn.title
             rewardInfoText = "Nearest: \(spawn.title) • +\(formatCoins(spawn.coinValue)) coins • +\(spawn.pointValue) points"
+            characterRangeText = String(format: "Character range: %.0f m", spawn.revealRadius)
 
             let currentDistance = distanceToSpawn(spawn)
             if let currentDistance {
@@ -560,10 +677,17 @@ private final class ARCameraViewModel: ObservableObject {
             }
 
             modelEntity = try await loadModelEntity(from: spawn.assetPath)
+            if Task.isCancelled { return }
             statusText = "Move closer to reveal AR object"
 
             startDistanceMonitoring()
             updateRenderEligibility()
+        } catch is CancellationError {
+            // Expected when quickly switching AR modes.
+            return
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            // Network request was canceled by mode switch.
+            return
         } catch let arError as ARCameraError {
             switch arError {
             case .noCatchableSpawns:
@@ -572,6 +696,7 @@ private final class ARCameraViewModel: ObservableObject {
                 catchInstructionText = "Try again later"
                 rewardInfoText = nil
                 distanceText = nil
+                characterRangeText = "Character range: 100 m"
                 canRenderModel = false
                 renderSpawnID = nil
             case .noActiveSpawns:
@@ -579,6 +704,7 @@ private final class ARCameraViewModel: ObservableObject {
                 statusText = "No active AR spawns"
                 rewardInfoText = nil
                 distanceText = nil
+                characterRangeText = "Character range: 100 m"
                 canRenderModel = false
                 renderSpawnID = nil
             default:
@@ -747,6 +873,14 @@ private final class ARCameraViewModel: ObservableObject {
 
     @MainActor
     private func refreshNearbyPosts() async {
+        let adminConfig = await loadARAdminConfiguration()
+        let visibleRange = max(1, adminConfig.postVisibleRangeMeters)
+        let cutoffDate = Calendar.current.date(
+            byAdding: .hour,
+            value: -max(1, adminConfig.postVisibilityDurationHours),
+            to: Date()
+        ) ?? Date.distantPast
+
         guard let userLocation = locationManager.lastLocation else {
             nearbyPosts = []
             return
@@ -765,6 +899,9 @@ private final class ARCameraViewModel: ObservableObject {
                     let lat = toDouble(data["latitude"]),
                     let lon = toDouble(data["longitude"])
                 else { return nil }
+                guard let createdAt = parsePostDate(data), createdAt >= cutoffDate else {
+                    return nil
+                }
 
                 let likeCount = intValue(data["likeCount"])
                 let dislikeCount = intValue(data["dislikeCount"])
@@ -793,7 +930,7 @@ private final class ARCameraViewModel: ObservableObject {
             }
 
             nearbyPosts = mapped
-                .filter { $0.distanceMeters <= 30 }
+                .filter { $0.distanceMeters <= visibleRange }
                 .sorted { $0.distanceMeters < $1.distanceMeters }
                 .prefix(8)
                 .map { $0 }
@@ -821,6 +958,47 @@ private final class ARCameraViewModel: ObservableObject {
                 distanceText = nil
             }
         }
+    }
+
+    private func loadARAdminConfiguration(forceRefresh: Bool = false) async -> ARAdminConfiguration {
+        if !forceRefresh,
+           let lastFetch = lastARAdminConfigFetch,
+           Date().timeIntervalSince(lastFetch) < 300 {
+            return arAdminConfigCache
+        }
+
+        do {
+            let snapshot = try await db.collection("admin_configuration").document("default").getDocument()
+            let data = snapshot.data() ?? [:]
+            let visibleRange = max(1, doubleValue(data["postVisibleRange"], default: ARAdminConfiguration.default.postVisibleRangeMeters))
+            let visibilityHours = max(1, intValue(data["postVisibilityDuration"], default: ARAdminConfiguration.default.postVisibilityDurationHours))
+            arAdminConfigCache = ARAdminConfiguration(
+                postVisibleRangeMeters: visibleRange,
+                postVisibilityDurationHours: visibilityHours
+            )
+            lastARAdminConfigFetch = Date()
+            return arAdminConfigCache
+        } catch {
+            arAdminConfigCache = .default
+            lastARAdminConfigFetch = nil
+            return arAdminConfigCache
+        }
+    }
+
+    private func parsePostDate(_ data: [String: Any]) -> Date? {
+        if let timestamp = data["date"] as? Timestamp {
+            return timestamp.dateValue()
+        }
+        if let timestamp = data["createdAt"] as? Timestamp {
+            return timestamp.dateValue()
+        }
+        if let date = data["date"] as? Date {
+            return date
+        }
+        if let date = data["createdAt"] as? Date {
+            return date
+        }
+        return nil
     }
 
     private func loadModelEntity(from assetPath: String) async throws -> ModelEntity {
@@ -1018,19 +1196,20 @@ private final class ARCameraViewModel: ObservableObject {
         return (Int(newCountDouble), newBalance)
     }
 
-    private func intValue(_ value: Any?) -> Int {
+    private func intValue(_ value: Any?, default defaultValue: Int = 0) -> Int {
         if let intValue = value as? Int { return intValue }
         if let number = value as? NSNumber { return number.intValue }
         if let doubleValue = value as? Double { return Int(doubleValue) }
-        return 0
+        if let stringValue = value as? String, let parsed = Double(stringValue) { return Int(parsed) }
+        return defaultValue
     }
 
-    private func doubleValue(_ value: Any?) -> Double {
+    private func doubleValue(_ value: Any?, default defaultValue: Double = 0) -> Double {
         if let doubleValue = value as? Double { return doubleValue }
         if let number = value as? NSNumber { return number.doubleValue }
         if let intValue = value as? Int { return Double(intValue) }
-        if let stringValue = value as? String { return Double(stringValue) ?? 0 }
-        return 0
+        if let stringValue = value as? String { return Double(stringValue) ?? defaultValue }
+        return defaultValue
     }
 
     private func formatCoins(_ value: Double) -> String {
@@ -1045,10 +1224,10 @@ private final class ARCameraViewModel: ObservableObject {
     }
 
     private func proximityScale(for distance: Double) -> CGFloat {
-        // 30m -> 0.72x, 0m -> 1.20x
+        // Restore stronger floating feel while keeping overlap manageable.
         let clampedDistance = max(0, min(distance, 30))
         let normalized = 1.0 - (clampedDistance / 30.0)
-        return CGFloat(0.72 + (0.48 * normalized))
+        return CGFloat(0.88 + (0.24 * normalized))
     }
 
     private func postCategory(from raw: Any?) -> Post.PostCategory {
@@ -1223,13 +1402,13 @@ private struct ARNearbyPostCard: View {
                         EmptyView()
                     }
                 }
-                .frame(width: 220, height: 130)
+                .frame(width: 190, height: 98)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             }
 
             Label {
                 Text(post.message)
-                    .lineLimit(3)
+                    .lineLimit(2)
             } icon: {
                 Image(systemName: "text.bubble.fill")
             }
@@ -1250,7 +1429,7 @@ private struct ARNearbyPostCard: View {
             }
         }
         .padding(10)
-        .frame(width: 230, alignment: .leading)
+        .frame(width: 200, alignment: .leading)
         .background(visual.color.opacity(0.28))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
