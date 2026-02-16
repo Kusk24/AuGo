@@ -1,6 +1,7 @@
 import Foundation
 import FirebaseFirestore
 import FirebaseAuth
+import FirebaseCore
 import CoreLocation
 import Combine
 #if canImport(FirebaseStorage)
@@ -96,7 +97,8 @@ final class AnnouncementManager: ObservableObject {
         startDate: Date,
         endDate: Date,
         coordinate: CLLocationCoordinate2D,
-        photoDatas: [Data]? = nil
+        keptPhotoPaths: [String],
+        newPhotoDatas: [Data] = []
     ) async throws {
         guard let user = Auth.auth().currentUser,
               let email = user.email else {
@@ -110,7 +112,21 @@ final class AnnouncementManager: ObservableObject {
         isLoading = true
         defer { isLoading = false }
 
-        var updatePayload: [String: Any] = [
+        let announcementRef = db.collection("announcements").document(announcementID)
+        let existingSnap = try await announcementRef.getDocument()
+        let previousPhotoPaths = existingSnap.data()?["photoPaths"] as? [String] ?? []
+
+        let limitedKeptPaths = Array(keptPhotoPaths.prefix(2))
+        let availableSlots = max(0, 2 - limitedKeptPaths.count)
+        let limitedNewPhotoDatas = Array(newPhotoDatas.prefix(availableSlots))
+        let uploadedNewPaths = try await uploadAnnouncementPhotos(
+            announcementId: announcementID,
+            userId: user.uid,
+            photoDatas: limitedNewPhotoDatas
+        )
+        let finalPhotoPaths = limitedKeptPaths + uploadedNewPaths
+
+        let updatePayload: [String: Any] = [
             "title": title,
             "body": body,
             "department": department,
@@ -126,19 +142,15 @@ final class AnnouncementManager: ObservableObject {
             "startDate": Timestamp(date: startDate),
             "endDate": Timestamp(date: endDate),
             "latitude": coordinate.latitude,
-            "longitude": coordinate.longitude
+            "longitude": coordinate.longitude,
+            "photoPaths": finalPhotoPaths
         ]
 
-        if let photoDatas {
-            let uploaded = try await uploadAnnouncementPhotos(
-                announcementId: announcementID,
-                userId: user.uid,
-                photoDatas: photoDatas
-            )
-            updatePayload["photoPaths"] = uploaded
+        let removedPhotoPaths = Array(Set(previousPhotoPaths).subtracting(finalPhotoPaths))
+        try await announcementRef.updateData(updatePayload)
+        if !removedPhotoPaths.isEmpty {
+            try? await deleteAnnouncementPhotos(removedPhotoPaths)
         }
-
-        try await db.collection("announcements").document(announcementID).updateData(updatePayload)
     }
 
     func getUserAnnouncementReaction(announcementId: String, userId: String) async throws -> String? {
@@ -295,6 +307,7 @@ final class AnnouncementManager: ObservableObject {
         guard !limitedPhotoDatas.isEmpty else { return [] }
 
 #if canImport(FirebaseStorage)
+        // Use the same storage root as user posts for consistency with existing working rules.
         let baseRef = Storage.storage().reference().child("announcement_photos").child(announcementId)
         var uploadedPaths: [String] = []
 
@@ -303,15 +316,128 @@ final class AnnouncementManager: ObservableObject {
             let fileRef = baseRef.child("\(userId)_\(Int(Date().timeIntervalSince1970))_\(index).jpg")
             let metadata = StorageMetadata()
             metadata.contentType = "image/jpeg"
-            _ = try await fileRef.putDataAsync(data, metadata: metadata)
-            uploadedPaths.append(fileRef.fullPath)
+            do {
+                _ = try await fileRef.putDataAsync(data, metadata: metadata)
+                uploadedPaths.append(fileRef.fullPath)
+            } catch {
+                let nsError = error as NSError
+                print("⚠️ Announcement photo SDK upload failed [\(nsError.domain):\(nsError.code)] \(nsError.localizedDescription). Trying REST fallback...")
+                let restPath = try await uploadSingleAnnouncementPhotoViaREST(
+                    announcementId: announcementId,
+                    userId: userId,
+                    index: index,
+                    photoData: data
+                )
+                uploadedPaths.append(restPath)
+            }
         }
+        print("✅ Uploaded \(uploadedPaths.count) announcement photo(s)")
         return uploadedPaths
 #else
-        _ = announcementId
-        _ = userId
-        _ = limitedPhotoDatas
-        return []
+        return try await uploadAnnouncementPhotosViaREST(
+            announcementId: announcementId,
+            userId: userId,
+            photoDatas: limitedPhotoDatas
+        )
+#endif
+    }
+
+    private func uploadAnnouncementPhotosViaREST(
+        announcementId: String,
+        userId: String,
+        photoDatas: [Data]
+    ) async throws -> [String] {
+        var uploadedPaths: [String] = []
+        for (index, data) in photoDatas.enumerated() {
+            guard !data.isEmpty else { continue }
+            let path = try await uploadSingleAnnouncementPhotoViaREST(
+                announcementId: announcementId,
+                userId: userId,
+                index: index,
+                photoData: data
+            )
+            uploadedPaths.append(path)
+        }
+        print("✅ Uploaded \(uploadedPaths.count) announcement photo(s) via REST")
+        return uploadedPaths
+    }
+
+    private func uploadSingleAnnouncementPhotoViaREST(
+        announcementId: String,
+        userId: String,
+        index: Int,
+        photoData: Data
+    ) async throws -> String {
+        guard let bucket = FirebaseApp.app()?.options.storageBucket else {
+            throw NSError(
+                domain: "AnnouncementUpload",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Missing storage bucket configuration."]
+            )
+        }
+        guard let user = Auth.auth().currentUser else {
+            throw NSError(
+                domain: "AnnouncementUpload",
+                code: -2,
+                userInfo: [NSLocalizedDescriptionKey: "Missing authenticated user."]
+            )
+        }
+
+        let token = try await user.getIDToken()
+        // Match user-post upload layout to avoid path/rule drift.
+        let objectPath = "announcement_photos/\(announcementId)/\(userId)_\(Int(Date().timeIntervalSince1970))_\(index).jpg"
+        var components = URLComponents(string: "https://firebasestorage.googleapis.com/v0/b/\(bucket)/o")
+        components?.queryItems = [URLQueryItem(name: "name", value: objectPath)]
+        guard let url = components?.url else {
+            throw NSError(
+                domain: "AnnouncementUpload",
+                code: -3,
+                userInfo: [NSLocalizedDescriptionKey: "Unable to construct upload URL."]
+            )
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        request.httpBody = photoData
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw NSError(
+                domain: "AnnouncementUpload",
+                code: -4,
+                userInfo: [NSLocalizedDescriptionKey: "Invalid upload response."]
+            )
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(
+                domain: "AnnouncementUpload",
+                code: http.statusCode,
+                userInfo: [NSLocalizedDescriptionKey: "REST upload failed (\(http.statusCode)): \(body)"]
+            )
+        }
+        return objectPath
+    }
+
+    private func deleteAnnouncementPhotos(_ photoPaths: [String]) async throws {
+#if canImport(FirebaseStorage)
+        for path in photoPaths {
+            let cleaned = path.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !cleaned.isEmpty else { continue }
+            do {
+                try await Storage.storage().reference(withPath: cleaned).delete()
+            } catch {
+                let nsError = error as NSError
+                if nsError.domain == "FIRStorageErrorDomain", nsError.code == 404 {
+                    continue
+                }
+                throw error
+            }
+        }
+#else
+        _ = photoPaths
 #endif
     }
 }

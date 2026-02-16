@@ -45,12 +45,20 @@ struct CreateAnnouncementView: View {
     }
     
     private var canProceed: Bool {
-        !title.isEmpty && !content.isEmpty && startDate <= endDate && coinRewardValue >= 0
+        !title.isEmpty
+        && !content.isEmpty
+        && startDate <= endDate
+        && coinRewardValue >= 0
+        && !isLoadingPhotos
     }
 
     private var coinRewardValue: Double {
         let normalized = coinRewardText.replacingOccurrences(of: ",", with: ".")
         return max(0, Double(normalized) ?? 0)
+    }
+
+    private var remainingPhotoSlots: Int {
+        max(0, 2 - existingPhotoPaths.count)
     }
     
     var body: some View {
@@ -71,18 +79,73 @@ struct CreateAnnouncementView: View {
                 }
 
                 Section("Photos") {
-                    PhotosPicker(
-                        selection: $selectedPhotoItems,
-                        maxSelectionCount: 2,
-                        matching: .images
-                    ) {
-                        Label("Add up to 2 photos", systemImage: "photo.on.rectangle.angled")
+                    if remainingPhotoSlots > 0 {
+                        PhotosPicker(
+                            selection: $selectedPhotoItems,
+                            maxSelectionCount: remainingPhotoSlots,
+                            matching: .images
+                        ) {
+                            Label("Add up to \(remainingPhotoSlots) photo\(remainingPhotoSlots == 1 ? "" : "s")", systemImage: "photo.on.rectangle.angled")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                    } else {
+                        Label("Max 2 photos reached", systemImage: "photo.on.rectangle.angled")
                             .font(.subheadline.weight(.semibold))
+                            .foregroundColor(.secondary)
                     }
 
                     if isLoadingPhotos {
                         ProgressView("Loading photos...")
                             .font(.caption)
+                    }
+
+                    if !existingPhotoPaths.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(Array(existingPhotoPaths.enumerated()), id: \.offset) { index, path in
+                                    if let url = storageDownloadURL(for: path) {
+                                        ZStack(alignment: .topTrailing) {
+                                            AsyncImage(url: url) { phase in
+                                                switch phase {
+                                                case .empty:
+                                                    ZStack {
+                                                        RoundedRectangle(cornerRadius: 10)
+                                                            .fill(Color(UIColor.systemGray5))
+                                                        ProgressView()
+                                                    }
+                                                case .success(let image):
+                                                    image
+                                                        .resizable()
+                                                        .scaledToFill()
+                                                case .failure:
+                                                    ZStack {
+                                                        RoundedRectangle(cornerRadius: 10)
+                                                            .fill(Color(UIColor.systemGray5))
+                                                        Image(systemName: "photo")
+                                                            .foregroundColor(.secondary)
+                                                    }
+                                                @unknown default:
+                                                    EmptyView()
+                                                }
+                                            }
+                                            .frame(width: 96, height: 96)
+                                            .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                                            Button {
+                                                existingPhotoPaths.remove(at: index)
+                                            } label: {
+                                                Image(systemName: "xmark.circle.fill")
+                                                    .foregroundColor(.white)
+                                                    .background(Color.black.opacity(0.4))
+                                                    .clipShape(Circle())
+                                            }
+                                            .offset(x: 6, y: -6)
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
                     }
 
                     if !selectedPhotos.isEmpty {
@@ -110,41 +173,6 @@ struct CreateAnnouncementView: View {
                             }
                             .padding(.vertical, 4)
                         }
-                    } else if !existingPhotoPaths.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 10) {
-                                ForEach(existingPhotoPaths, id: \.self) { path in
-                                    if let url = storageDownloadURL(for: path) {
-                                        AsyncImage(url: url) { phase in
-                                            switch phase {
-                                            case .empty:
-                                                ZStack {
-                                                    RoundedRectangle(cornerRadius: 10)
-                                                        .fill(Color(UIColor.systemGray5))
-                                                    ProgressView()
-                                                }
-                                            case .success(let image):
-                                                image
-                                                    .resizable()
-                                                    .scaledToFill()
-                                            case .failure:
-                                                ZStack {
-                                                    RoundedRectangle(cornerRadius: 10)
-                                                        .fill(Color(UIColor.systemGray5))
-                                                    Image(systemName: "photo")
-                                                        .foregroundColor(.secondary)
-                                                }
-                                            @unknown default:
-                                                EmptyView()
-                                            }
-                                        }
-                                        .frame(width: 96, height: 96)
-                                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                                    }
-                                }
-                            }
-                            .padding(.vertical, 4)
-                        }
                     }
                 }
                 
@@ -157,7 +185,9 @@ struct CreateAnnouncementView: View {
             Button {
                 navigateToMap = true
             } label: {
-                Text(editingAnnouncement == nil ? "Choose Location" : "Update & Resubmit")
+                Text(isLoadingPhotos
+                     ? "Loading photos..."
+                     : (editingAnnouncement == nil ? "Choose Location" : "Update & Resubmit"))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -177,6 +207,7 @@ struct CreateAnnouncementView: View {
                 startDate: startDate,
                 endDate: endDate,
                 initialCoordinate: editingAnnouncement?.coordinate,
+                keptExistingPhotoPaths: existingPhotoPaths,
                 photoDatas: selectedPhotos.compactMap { $0.jpegData(compressionQuality: 0.82) },
                 onSubmitSuccess: onSubmitSuccess
             )
@@ -198,7 +229,7 @@ struct CreateAnnouncementView: View {
                 loaded.append(image)
             }
         }
-        selectedPhotos = Array(loaded.prefix(2))
+        selectedPhotos = Array(loaded.prefix(remainingPhotoSlots))
     }
 
     private func storageDownloadURL(for assetPath: String) -> URL? {

@@ -16,6 +16,7 @@ struct CreateAnnouncementMapView: View {
     let startDate: Date
     let endDate: Date
     let initialCoordinate: CLLocationCoordinate2D?
+    let keptExistingPhotoPaths: [String]
     let photoDatas: [Data]
     let onSubmitSuccess: (() -> Void)?
     
@@ -95,6 +96,7 @@ struct CreateAnnouncementMapView: View {
         else { return }
         
         isSubmitting = true
+        print("📸 Announcement submit with \(photoDatas.count) photo(s)")
         
         do {
             if let announcementID {
@@ -109,7 +111,8 @@ struct CreateAnnouncementMapView: View {
                     startDate: startDate,
                     endDate: endDate,
                     coordinate: coord,
-                    photoDatas: photoDatas.isEmpty ? nil : photoDatas
+                    keptPhotoPaths: keptExistingPhotoPaths,
+                    newPhotoDatas: photoDatas
                 )
             } else {
                 try await announcementManager.createAnnouncement(
@@ -131,6 +134,7 @@ struct CreateAnnouncementMapView: View {
             dismiss()
             
         } catch {
+            print("❌ Announcement submit failed: \(error.localizedDescription)")
             alertMessage = error.localizedDescription
             showAlert = true
         }

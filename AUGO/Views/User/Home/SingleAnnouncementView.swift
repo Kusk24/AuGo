@@ -37,14 +37,30 @@ struct SingleAnnouncementView: View {
     }
 
     var body: some View {
-        NavigationView {
-            ScrollView {
-                if isLoading && liveAnnouncement == nil {
-                    ProgressView("Loading announcement...")
-                        .padding(.top, 40)
+        VStack(spacing: 0) {
+            HStack {
+                Spacer()
+                Text("Announcement")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.gray)
+                        .font(.title3)
                 }
+            }
+            .padding(.horizontal)
+            .padding(.top, 8)
 
+            ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
+                    if isLoading {
+                        ProgressView("Refreshing...")
+                            .font(.caption)
+                    }
+
                     HStack {
                         statusChip
                         if displayAnnouncement.isUrgent {
@@ -196,21 +212,10 @@ struct SingleAnnouncementView: View {
                 }
                 .padding()
             }
-            .navigationTitle("Announcement")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.gray)
-                            .font(.title3)
-                    }
-                }
-            }
             .onAppear {
-                startListener()
+                if listener == nil {
+                    startListener()
+                }
                 if canReact {
                     Task { await loadUserReaction() }
                 }
@@ -268,8 +273,11 @@ struct SingleAnnouncementView: View {
         listener = Firestore.firestore()
             .collection("announcements")
             .document(announcement.id)
-            .addSnapshotListener { snapshot, _ in
+            .addSnapshotListener { snapshot, error in
                 defer { isLoading = false }
+                if error != nil {
+                    return
+                }
                 guard let snapshot, snapshot.exists, let data = snapshot.data() else { return }
                 guard
                     let title = data["title"] as? String,
