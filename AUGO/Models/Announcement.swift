@@ -38,6 +38,10 @@ struct Announcement: Identifiable, Codable {
     let department: String
     let isUrgent: Bool
     let link: String?               // ✅ NEW (optional)
+    let photoPaths: [String]
+    let coinReward: Double
+    let likeCount: Int
+    let dislikeCount: Int
     
     // MARK: - Ownership
     let createdByUID: String

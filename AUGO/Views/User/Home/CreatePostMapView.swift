@@ -123,12 +123,7 @@ struct CreatePostMapView: View {
         .navigationTitle("Choose Location")
         .navigationBarTitleDisplayMode(.inline)
         .alert("Post", isPresented: $showAlert) {
-            Button("OK") {
-                if alertMessage.contains("successfully") {
-                    dismiss()
-                    isPresentedFromHome = false
-                }
-            }
+            Button("OK", role: .cancel) {}
         } message: {
             Text(alertMessage)
         }
@@ -154,8 +149,8 @@ struct CreatePostMapView: View {
             )
             
             print("✅ Post created with ID: \(postId) at location: \(coordinate.latitude), \(coordinate.longitude)")
-            alertMessage = postManager.lastPostCreationMessage ?? "Post created successfully!"
-            showAlert = true
+            isPresentedFromHome = false
+            dismiss()
             isSubmitting = false
             
         } catch {

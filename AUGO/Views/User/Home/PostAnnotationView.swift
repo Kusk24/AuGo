@@ -9,9 +9,9 @@ struct PostPinView: View {
     var body: some View {
         let visual = ContentSymbolKit.postVisual(for: post.category)
         return Image(systemName: visual.symbol)
-            .font(.system(size: 18, weight: .semibold))
+            .font(.system(size: 14, weight: .semibold))
             .foregroundStyle(.white)
-            .frame(width: 34, height: 34)
+            .frame(width: 27, height: 27)
             .background(visual.color)
             .clipShape(Circle())
             .overlay(Circle().stroke(.white, lineWidth: 2))
@@ -152,9 +152,9 @@ struct AnnouncementPinView: View {
         Button(action: onTap) {
             VStack(spacing: 4) {
                 Image(systemName: symbolName)
-                    .font(.system(size: 26, weight: .bold))
+                    .font(.system(size: 21, weight: .bold))
                     .foregroundColor(.white)
-                    .frame(width: 48, height: 48)
+                    .frame(width: 38, height: 38)
                     .background(pinColor)
                     .clipShape(Circle())
                     .overlay(

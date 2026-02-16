@@ -9,10 +9,10 @@ struct PostClusterView: View {
             ZStack {
                 Circle()
                     .fill(Color.Brand.primary)
-                    .frame(width: 30, height: 30)
+                    .frame(width: 24, height: 24)
 
                 Text("\(cluster.count)")
-                    .font(.caption.bold())
+                    .font(.caption2.bold())
                     .foregroundColor(.white)
             }
         }

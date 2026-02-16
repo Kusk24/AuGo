@@ -44,7 +44,7 @@ struct ARCameraView: View {
                     Button {
                         viewModel.togglePostsOverlayInCharacter()
                     } label: {
-                        Text(viewModel.showPostsInCharacter ? "Hide Posts Overlay" : "Show Posts Overlay")
+                        Text(viewModel.showPostsInCharacter ? "Hide Posts" : "Show Posts")
                             .font(.footnote.weight(.semibold))
                             .foregroundColor(.white)
                             .padding(.horizontal, 10)
@@ -798,24 +798,28 @@ private final class ARCameraViewModel: ObservableObject {
                 .prefix(8)
                 .map { $0 }
 
-            titleText = "Nearby Posts"
-            statusText = "Posts in range: \(nearbyPosts.count)"
-            if let nearest = nearbyPosts.first {
-                let caption = nearest.message.trimmingCharacters(in: .whitespacesAndNewlines)
-                let preview = caption.isEmpty ? "Untitled post" : String(caption.prefix(36))
-                rewardInfoText = "Nearest: \(preview)"
-                distanceText = String(format: "Distance: %.1f m", nearest.distanceMeters)
-            } else {
-                rewardInfoText = "Nearest: none"
-                distanceText = nil
+            if contentMode == .posts {
+                titleText = "Nearby Posts"
+                statusText = "Posts in range: \(nearbyPosts.count)"
+                if let nearest = nearbyPosts.first {
+                    let caption = nearest.message.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let preview = caption.isEmpty ? "Untitled post" : String(caption.prefix(36))
+                    rewardInfoText = "Nearest: \(preview)"
+                    distanceText = String(format: "Distance: %.1f m", nearest.distanceMeters)
+                } else {
+                    rewardInfoText = "Nearest: none"
+                    distanceText = nil
+                }
             }
         } catch {
             // Keep AR usable even if post fetch fails.
             nearbyPosts = []
-            titleText = "Nearby Posts"
-            statusText = "Posts in range: 0"
-            rewardInfoText = "Nearest: none"
-            distanceText = nil
+            if contentMode == .posts {
+                titleText = "Nearby Posts"
+                statusText = "Posts in range: 0"
+                rewardInfoText = "Nearest: none"
+                distanceText = nil
+            }
         }
     }
 

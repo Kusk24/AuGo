@@ -166,6 +166,12 @@ struct AnnouncerCampusMapView: View {
             department: department,
             isUrgent: isUrgent,
             link: data["link"] as? String,
+            photoPaths: data["photoPaths"] as? [String] ?? [],
+            coinReward: (data["coinReward"] as? Double)
+                ?? (data["coinReward"] as? NSNumber)?.doubleValue
+                ?? 0.2,
+            likeCount: data["likeCount"] as? Int ?? 0,
+            dislikeCount: data["dislikeCount"] as? Int ?? 0,
             createdByUID: createdByUID,
             createdByName: createdByName,
             createdByEmail: createdByEmail,

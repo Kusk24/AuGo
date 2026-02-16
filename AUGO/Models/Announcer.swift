@@ -20,7 +20,7 @@ struct Announcer: Codable, Identifiable {
     
     enum AffiliationType: String, Codable {
         case faculty
-        case studentOrganization
+        case studentOrganization = "student_org"
         case other
     }
     

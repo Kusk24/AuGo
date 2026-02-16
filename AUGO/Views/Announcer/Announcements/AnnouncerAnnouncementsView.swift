@@ -65,7 +65,8 @@ struct AnnouncerAnnouncementsView: View {
             NavigationStack {
                 CreateAnnouncementView(
                     isPresentedFromHome: .constant(false),
-                    editingAnnouncement: announcement
+                    editingAnnouncement: announcement,
+                    onSubmitSuccess: { editingAnnouncement = nil }
                 )
             }
         }

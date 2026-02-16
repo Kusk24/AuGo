@@ -97,6 +97,10 @@ final class AnnouncementCenter: ObservableObject {
         let latitude = data["latitude"] as? Double
         let longitude = data["longitude"] as? Double
         let link = data["link"] as? String
+        let photoPaths = data["photoPaths"] as? [String] ?? []
+        let coinReward = (data["coinReward"] as? Double)
+            ?? (data["coinReward"] as? NSNumber)?.doubleValue
+            ?? 0.2
         
         return Announcement(
             id: doc.documentID,
@@ -105,6 +109,10 @@ final class AnnouncementCenter: ObservableObject {
             department: department,
             isUrgent: isUrgent,
             link: link,
+            photoPaths: photoPaths,
+            coinReward: coinReward,
+            likeCount: data["likeCount"] as? Int ?? 0,
+            dislikeCount: data["dislikeCount"] as? Int ?? 0,
             createdByUID: createdByUID,
             createdByName: createdByName,
             createdByEmail: createdByEmail,

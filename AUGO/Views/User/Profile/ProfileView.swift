@@ -57,9 +57,10 @@ struct ProfileView: View {
         postManager.userEconomy?.dailyCoinReward ?? 0
     }
     
-    private var todayPosts: [Post] {
-        postManager.userPosts
-            .filter { Calendar.current.isDateInToday($0.date) }
+    private var myPosts: [Post] {
+        let cutoff = Date().addingTimeInterval(-24 * 60 * 60)
+        return postManager.userPosts
+            .filter { $0.date >= cutoff }
             .sorted { $0.date > $1.date }
     }
 
@@ -187,9 +188,9 @@ struct ProfileView: View {
                     }
                     .padding(.horizontal, 16)
 
-                    // MARK: Today Post
+                    // MARK: My Posts
                     VStack(alignment: .leading, spacing: 12) {
-                        SectionTitle("Today Posts")
+                        SectionTitle("My Posts")
 
                         if postManager.isUserPostsLoading {
                             HStack(spacing: 10) {
@@ -199,14 +200,14 @@ struct ProfileView: View {
                                     .foregroundColor(.gray)
                             }
                             .padding()
-                        } else if todayPosts.isEmpty {
-                            Text("No posts yet. Create your first post!")
+                        } else if myPosts.isEmpty {
+                            Text("No posts from the last 24 hours yet.")
                                 .font(.subheadline)
                                 .foregroundColor(.gray)
                                 .padding()
                         } else {
                             LazyVStack(spacing: 12) {
-                                ForEach(Array(todayPosts.enumerated()), id: \.offset) { _, post in
+                                ForEach(Array(myPosts.enumerated()), id: \.offset) { _, post in
                                     TodayPostCard(
                                         post: post,
                                         onDelete: {
@@ -638,7 +639,7 @@ private struct CapturedCharacterCard: View {
                     placeholderView
                 }
             }
-            .frame(height: 135)
+            .frame(height: 156)
 
             Text(capture.title)
                 .font(.subheadline.weight(.semibold))
@@ -658,7 +659,7 @@ private struct CapturedCharacterCard: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(12)
-        .frame(width: 180)
+        .frame(width: 180, height: 332, alignment: .top)
         .background(
             RoundedRectangle(cornerRadius: 16)
                 .fill(Color.white)

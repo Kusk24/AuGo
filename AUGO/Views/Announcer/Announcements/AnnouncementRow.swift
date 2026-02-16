@@ -32,6 +32,19 @@ struct AnnouncementRow: View {
                 .font(.caption)
                 .foregroundColor(.secondary)
 
+            Text(String(format: "Reaction reward: +%.1f coins", announcement.coinReward))
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            HStack(spacing: 14) {
+                Label("\(announcement.likeCount)", systemImage: "hand.thumbsup.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.green)
+                Label("\(announcement.dislikeCount)", systemImage: "hand.thumbsdown.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.orange)
+            }
+
             if let onEdit {
                 Button {
                     onEdit()

@@ -280,11 +280,7 @@ struct CreatePostView: View {
             }
         }
         .alert("Post", isPresented: $showAlert) {
-            Button("OK") {
-                if alertMessage.contains("successfully") {
-                    isPresentedFromHome = false
-                }
-            }
+            Button("OK", role: .cancel) {}
         } message: {
             Text(alertMessage)
         }
@@ -329,8 +325,7 @@ struct CreatePostView: View {
             )
             
             print("✅ Post created with ID: \(postId) at location: \(coordinate.latitude), \(coordinate.longitude)")
-            alertMessage = postManager.lastPostCreationMessage ?? "Post created successfully at your current location!"
-            showAlert = true
+            isPresentedFromHome = false
             isSubmitting = false
             
         } catch {

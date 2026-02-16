@@ -14,12 +14,12 @@ import FirebaseStorage
 class PostManager: ObservableObject {
     struct AdminConfiguration {
         let dailyFreePostLimit: Int
-        let dailyFreeCoin: Int
+        let dailyFreeCoin: Double
         let postVisibilityDurationHours: Int
         
         static let `default` = AdminConfiguration(
             dailyFreePostLimit: 3,
-            dailyFreeCoin: 10,
+            dailyFreeCoin: 10.0,
             postVisibilityDurationHours: 24
         )
     }
@@ -80,6 +80,7 @@ class PostManager: ObservableObject {
     private let notificationManager = NotificationManager.shared
     private var lastKnownUserPostReactions: [String: (likes: Int, dislikes: Int)] = [:]
     private var didPrimeUserPostReactions = false
+    private var isUsingUserPostsFallback = false
     
     init() {
         // Start listening for all posts immediately when manager is created
@@ -118,16 +119,18 @@ class PostManager: ObservableObject {
             }
             
             adminConfigCache = AdminConfiguration(
-                dailyFreePostLimit: max(0, data["dailyFreePostLimit"] as? Int ?? AdminConfiguration.default.dailyFreePostLimit),
-                dailyFreeCoin: max(0, data["dailyFreeCoin"] as? Int ?? AdminConfiguration.default.dailyFreeCoin),
-                postVisibilityDurationHours: max(1, data["postVisibilityDuration"] as? Int ?? AdminConfiguration.default.postVisibilityDurationHours)
+                dailyFreePostLimit: max(0, intValue(data["dailyFreePostLimit"], default: AdminConfiguration.default.dailyFreePostLimit)),
+                dailyFreeCoin: max(0, doubleValue(data["dailyFreeCoin"], default: AdminConfiguration.default.dailyFreeCoin)),
+                postVisibilityDurationHours: max(1, intValue(data["postVisibilityDuration"], default: AdminConfiguration.default.postVisibilityDurationHours))
             )
             lastAdminConfigFetch = Date()
+            print("✅ Admin config loaded: dailyFreeCoin=\(adminConfigCache.dailyFreeCoin), dailyFreePostLimit=\(adminConfigCache.dailyFreePostLimit), postVisibilityDurationHours=\(adminConfigCache.postVisibilityDurationHours)")
             return adminConfigCache
         } catch {
             print("⚠️ Failed to load admin configuration. Using defaults: \(error.localizedDescription)")
             adminConfigCache = .default
-            lastAdminConfigFetch = Date()
+            // Do not cache failures; allow immediate retry after auth/rules changes.
+            lastAdminConfigFetch = nil
             return adminConfigCache
         }
     }
@@ -150,12 +153,20 @@ class PostManager: ObservableObject {
         isSameDay(rawDate, now) ? rawCount : 0
     }
 
-    private func doubleValue(_ value: Any?) -> Double {
+    private func doubleValue(_ value: Any?, default defaultValue: Double = 0) -> Double {
         if let doubleValue = value as? Double { return doubleValue }
         if let intValue = value as? Int { return Double(intValue) }
         if let number = value as? NSNumber { return number.doubleValue }
-        if let stringValue = value as? String { return Double(stringValue) ?? 0 }
-        return 0
+        if let stringValue = value as? String, let parsed = Double(stringValue) { return parsed }
+        return defaultValue
+    }
+
+    private func intValue(_ value: Any?, default defaultValue: Int) -> Int {
+        if let intValue = value as? Int { return intValue }
+        if let doubleValue = value as? Double { return Int(doubleValue) }
+        if let number = value as? NSNumber { return number.intValue }
+        if let stringValue = value as? String, let parsed = Double(stringValue) { return Int(parsed) }
+        return defaultValue
     }
 
     private static func formatCoins(_ value: Double) -> String {
@@ -163,7 +174,7 @@ class PostManager: ObservableObject {
     }
     
     func refreshUserEconomy(userId: String) async {
-        let config = await loadAdminConfiguration()
+        let config = await loadAdminConfiguration(forceRefresh: true)
         do {
             let snapshot = try await db.collection("users").document(userId).getDocument()
             let data = snapshot.data() ?? [:]
@@ -188,7 +199,7 @@ class PostManager: ObservableObject {
                 dailyPostsUsed: todayPostCount,
                 dailyFreePostLimit: config.dailyFreePostLimit,
                 freePostsLeft: freePostsLeft,
-                dailyCoinReward: Double(config.dailyFreeCoin),
+                dailyCoinReward: config.dailyFreeCoin,
                 canClaimDailyCoin: canClaimDailyCoin
             )
         } catch {
@@ -220,14 +231,14 @@ class PostManager: ObservableObject {
                 return "Daily coin already claimed today."
             }
             
-            let newBalance = coinBalance + Double(config.dailyFreeCoin)
+            let newBalance = coinBalance + config.dailyFreeCoin
             transaction.setData([
                 "coinBalance": newBalance,
                 "lastCoinGrantDate": Timestamp(date: startOfDay),
                 "updatedAt": Timestamp(date: now)
             ], forDocument: userRef, merge: true)
             
-            return "Claimed +\(Self.formatCoins(Double(config.dailyFreeCoin))) coins. Balance: \(Self.formatCoins(newBalance))."
+            return "Claimed +\(Self.formatCoins(config.dailyFreeCoin)) coins. Balance: \(Self.formatCoins(newBalance))."
         }
         
         let message = (result as? String) ?? "Daily coin claimed."
@@ -373,6 +384,7 @@ class PostManager: ObservableObject {
         userPostsListener?.remove()
         listeningUserPostsForUserId = userId
         isUserPostsLoading = true
+        isUsingUserPostsFallback = false
         didPrimeUserPostReactions = false
         lastKnownUserPostReactions = [:]
         
@@ -387,6 +399,12 @@ class PostManager: ObservableObject {
                 Task { @MainActor in
                     if let error = error {
                         print("❌ Error fetching user posts: \(error.localizedDescription)")
+                        if !self.isUsingUserPostsFallback,
+                           error.localizedDescription.localizedCaseInsensitiveContains("index") {
+                            print("⚠️ Missing index for user posts query; switching to fallback listener")
+                            self.startFallbackUserPostsListener(userId: userId)
+                            return
+                        }
                         self.errorMessage = error.localizedDescription
                         self.isUserPostsLoading = false
                         return
@@ -414,6 +432,40 @@ class PostManager: ObservableObject {
                     if !parsed.isEmpty {
                         print("📝 Current user posts: \(parsed.map { $0.id ?? "no-id" }.joined(separator: ", "))")
                     }
+                }
+            }
+    }
+
+    private func startFallbackUserPostsListener(userId: String) {
+        userPostsListener?.remove()
+        isUsingUserPostsFallback = true
+
+        userPostsListener = db.collection("posts")
+            .whereField("userId", isEqualTo: userId)
+            .addSnapshotListener { [weak self] snapshot, error in
+                guard let self else { return }
+
+                Task { @MainActor in
+                    if let error = error {
+                        print("❌ Fallback user posts listener failed: \(error.localizedDescription)")
+                        self.errorMessage = error.localizedDescription
+                        self.isUserPostsLoading = false
+                        return
+                    }
+
+                    guard let documents = snapshot?.documents else {
+                        self.userPosts = []
+                        self.isUserPostsLoading = false
+                        return
+                    }
+
+                    let parsed = documents.compactMap { self.parsePost(from: $0) }
+                        .sorted { $0.date > $1.date }
+
+                    print("✅ Fallback user posts update: \(parsed.count) posts")
+                    self.emitReactionNotificationsIfNeeded(posts: parsed)
+                    self.userPosts = parsed
+                    self.isUserPostsLoading = false
                 }
             }
     }

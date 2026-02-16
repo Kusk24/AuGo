@@ -11,10 +11,13 @@ struct CreateAnnouncementMapView: View {
     let title: String
     let content: String
     let link: String?
+    let coinReward: Double
     let isUrgent: Bool
     let startDate: Date
     let endDate: Date
     let initialCoordinate: CLLocationCoordinate2D?
+    let photoDatas: [Data]
+    let onSubmitSuccess: (() -> Void)?
     
     @EnvironmentObject var campusMapViewModel: CampusMapViewModel
     @EnvironmentObject var authManager: AuthenticationManager
@@ -79,10 +82,7 @@ struct CreateAnnouncementMapView: View {
             }
         }
         .alert("Announcement", isPresented: $showAlert) {
-            Button("OK") {
-                dismiss()
-                isPresentedFromHome = false
-            }
+            Button("OK", role: .cancel) {}
         } message: {
             Text(alertMessage)
         }
@@ -105,11 +105,12 @@ struct CreateAnnouncementMapView: View {
                     department: announcer.affiliationName,
                     isUrgent: isUrgent,
                     link: link,
+                    coinReward: coinReward,
                     startDate: startDate,
                     endDate: endDate,
-                    coordinate: coord
+                    coordinate: coord,
+                    photoDatas: photoDatas.isEmpty ? nil : photoDatas
                 )
-                alertMessage = "Announcement updated and resubmitted for approval."
             } else {
                 try await announcementManager.createAnnouncement(
                     title: title,
@@ -117,14 +118,17 @@ struct CreateAnnouncementMapView: View {
                     department: announcer.affiliationName,
                     isUrgent: isUrgent,
                     link: link,
+                    coinReward: coinReward,
                     startDate: startDate,
                     endDate: endDate,
                     coordinate: coord,
-                    announcerName: announcer.name
+                    announcerName: announcer.name,
+                    photoDatas: photoDatas
                 )
-                alertMessage = "Announcement submitted for approval."
             }
-            showAlert = true
+            onSubmitSuccess?()
+            isPresentedFromHome = false
+            dismiss()
             
         } catch {
             alertMessage = error.localizedDescription

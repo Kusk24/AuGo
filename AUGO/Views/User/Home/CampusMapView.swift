@@ -373,10 +373,11 @@ struct CampusMapView: View {
     private var arSpawnsMapAnnotations: some MapContent {
         ForEach(arSpawnDots) { dot in
             Annotation("", coordinate: dot.coordinate) {
+                let markerSize = dotSize()
                 ZStack {
                     Circle()
                         .fill(colorForCatchableTime(dot.catchableTime))
-                        .frame(width: dotSize(for: dot.catchableTime), height: dotSize(for: dot.catchableTime))
+                        .frame(width: markerSize, height: markerSize)
                         .overlay(
                             Circle()
                                 .stroke(Color.white.opacity(0.9), lineWidth: 1.5)
@@ -384,7 +385,7 @@ struct CampusMapView: View {
                         .shadow(color: .black.opacity(0.2), radius: 2, y: 1)
 
                     Image(systemName: dot.symbol)
-                        .font(.system(size: dotSize(for: dot.catchableTime) * 0.45, weight: .semibold))
+                        .font(.system(size: markerSize * 0.45, weight: .semibold))
                         .foregroundStyle(.white)
                 }
                     .accessibilityLabel("\(dot.title), catchable time \(dot.catchableTime)")
@@ -404,11 +405,11 @@ struct CampusMapView: View {
                         // Pin icon
                         Circle()
                             .fill(visual.color)
-                            .frame(width: 36, height: 36)
+                            .frame(width: 29, height: 29)
                             .overlay(
                                 Image(systemName: visual.symbol)
                                     .foregroundColor(.white)
-                                    .font(.system(size: 16))
+                                    .font(.system(size: 13))
                             )
                         
                         // Preview label
@@ -490,11 +491,9 @@ struct CampusMapView: View {
         }
     }
 
-    private func dotSize(for catchableTime: Int) -> CGFloat {
-        // Keep the dot visually simple and stable, but larger for better map visibility.
-        let clamped = min(max(catchableTime, 5), 300)
-        let normalized = Double(clamped - 5) / Double(300 - 5)
-        return CGFloat(14.0 + (normalized * 14.0))
+    private func dotSize() -> CGFloat {
+        // Uniform AR marker size for consistency across all characters.
+        16
     }
 
     private func startARSpawnsListener() {
