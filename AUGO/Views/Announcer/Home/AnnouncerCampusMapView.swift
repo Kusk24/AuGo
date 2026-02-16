@@ -31,7 +31,7 @@ struct AnnouncerCampusMapView: View {
                         // User location
                         UserAnnotation()
                         
-                        // Show all announcements except rejected/declined.
+                        // Show only pending/active/scheduled/declined on announcer map.
                         ForEach(mapAnnouncements) { ann in
                             if let coord = ann.coordinate {
                                 Annotation("", coordinate: coord) {
@@ -128,7 +128,14 @@ struct AnnouncerCampusMapView: View {
                 }
 
                 self.mapAnnouncements = documents.compactMap(parseAnnouncement)
-                    .filter { $0.status != .rejected && $0.status != .declined }
+                    .filter { ann in
+                        switch ann.displayStatus() {
+                        case .pending, .active, .scheduled, .declined:
+                            return true
+                        case .expired, .removed:
+                            return false
+                        }
+                    }
                     .sorted { $0.createdAt > $1.createdAt }
             }
     }
@@ -145,7 +152,7 @@ struct AnnouncerCampusMapView: View {
             let createdByName = data["createdByName"] as? String,
             let createdByEmail = data["createdByEmail"] as? String,
             let statusRaw = data["status"] as? String,
-            let status = AnnouncementStatus(rawValue: statusRaw),
+            let status = AnnouncementStatus.fromFirestore(statusRaw),
             let createdAt = (data["createdAt"] as? Timestamp)?.dateValue(),
             let submittedAt = (data["submittedAt"] as? Timestamp)?.dateValue(),
             let startDate = (data["startDate"] as? Timestamp)?.dateValue(),

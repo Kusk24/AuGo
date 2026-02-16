@@ -21,7 +21,7 @@ final class AnnouncerAnnouncementsViewModel: ObservableObject {
     }
     
     func startListening() {
-        guard let email = Auth.auth().currentUser?.email?.lowercased() else {
+        guard let email = Auth.auth().currentUser?.email else {
             print("❌ No logged-in email")
             return
         }
@@ -63,13 +63,13 @@ final class AnnouncerAnnouncementsViewModel: ObservableObject {
             guard let oldStatus, oldStatus != announcement.status else { continue }
 
             switch announcement.status {
-            case .approved, .active:
+            case .scheduled, .active:
                 notificationManager.addInAppNotification(
                     id: "announcement_decision_\(announcement.id)",
                     title: "Announcement Approved",
                     body: "\"\(announcement.title)\" was approved by admin."
                 )
-            case .declined, .rejected:
+            case .declined:
                 notificationManager.addInAppNotification(
                     id: "announcement_decision_\(announcement.id)",
                     title: "Announcement Rejected",
@@ -83,18 +83,12 @@ final class AnnouncerAnnouncementsViewModel: ObservableObject {
     
     var filteredAnnouncements: [Announcement] {
         if selectedFilter == .scheduled {
-            let now = Date()
-            return announcements.filter {
-                ($0.status == .approved || $0.status == .pending) && $0.startDate > now
-            }
-        }
-        if selectedFilter == .declined {
-            return announcements.filter { $0.status == .declined || $0.status == .rejected }
+            return announcements.filter { $0.displayStatus() == .scheduled }
         }
         guard let status = selectedFilter.status else {
             return announcements
         }
-        return announcements.filter { $0.status == status }
+        return announcements.filter { $0.displayStatus() == status }
     }
     
     // MARK: - Parsing (STRICT)
@@ -110,7 +104,7 @@ final class AnnouncerAnnouncementsViewModel: ObservableObject {
             let createdByEmail = data["createdByEmail"] as? String,
             let createdByName = data["createdByName"] as? String,
             let statusRaw = data["status"] as? String,
-            let status = AnnouncementStatus(rawValue: statusRaw),
+            let status = AnnouncementStatus.fromFirestore(statusRaw),
             let createdAt = (data["createdAt"] as? Timestamp)?.dateValue(),
             let submittedAt = (data["submittedAt"] as? Timestamp)?.dateValue(),
             let startDate = (data["startDate"] as? Timestamp)?.dateValue(),

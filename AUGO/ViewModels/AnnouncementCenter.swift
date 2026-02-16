@@ -43,7 +43,7 @@ final class AnnouncementCenter: ObservableObject {
     
     private func listenToActiveAnnouncements() {
         listener = db.collection("announcements")
-            .whereField("status", in: ["approved", "active"])
+            .whereField("status", isEqualTo: "active")
             .addSnapshotListener { [weak self] snapshot, error in
                 guard let self else { return }
                 
@@ -81,7 +81,7 @@ final class AnnouncementCenter: ObservableObject {
             let createdByName = data["createdByName"] as? String,
             let createdByEmail = data["createdByEmail"] as? String,
             let statusRaw = data["status"] as? String,
-            let status = AnnouncementStatus(rawValue: statusRaw),
+            let status = AnnouncementStatus.fromFirestore(statusRaw),
             let createdAt = (data["createdAt"] as? Timestamp)?.dateValue(),
             let submittedAt = (data["submittedAt"] as? Timestamp)?.dateValue(),
             let startDate = (data["startDate"] as? Timestamp)?.dateValue(),

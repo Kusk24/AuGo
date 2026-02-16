@@ -3,12 +3,30 @@ import CoreLocation
 
 enum AnnouncementStatus: String, Codable {
     case pending
-    case approved
+    case scheduled
     case declined
-    case rejected
     case active
     case expired
     case removed
+
+    static func fromFirestore(_ rawValue: String) -> AnnouncementStatus? {
+        switch rawValue.lowercased() {
+        case "pending":
+            return .pending
+        case "scheduled", "approved":
+            return .scheduled
+        case "declined", "rejected":
+            return .declined
+        case "active":
+            return .active
+        case "expired":
+            return .expired
+        case "removed":
+            return .removed
+        default:
+            return nil
+        }
+    }
 }
 
 struct Announcement: Identifiable, Codable {
@@ -47,5 +65,16 @@ struct Announcement: Identifiable, Codable {
     var coordinate: CLLocationCoordinate2D? {
         guard let lat = latitude, let lon = longitude else { return nil }
         return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+    }
+
+    func displayStatus(referenceDate now: Date = Date()) -> AnnouncementStatus {
+        switch status {
+        case .active where now < startDate:
+            return .scheduled
+        case .active where now > endDate:
+            return .expired
+        default:
+            return status
+        }
     }
 }

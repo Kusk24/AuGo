@@ -25,7 +25,7 @@ final class AnnouncementManager: ObservableObject {
     ) async throws {
         
         guard let user = Auth.auth().currentUser,
-              let email = user.email?.lowercased() else {
+              let email = user.email else {
             throw NSError(
                 domain: "AUTH",
                 code: 401,
@@ -61,5 +61,47 @@ final class AnnouncementManager: ObservableObject {
         ]
         
         try await db.collection("announcements").addDocument(data: data)
+    }
+
+    func updateAndResubmitAnnouncement(
+        announcementID: String,
+        title: String,
+        body: String,
+        department: String,
+        isUrgent: Bool,
+        link: String?,
+        startDate: Date,
+        endDate: Date,
+        coordinate: CLLocationCoordinate2D
+    ) async throws {
+        guard let user = Auth.auth().currentUser,
+              let email = user.email else {
+            throw NSError(
+                domain: "AUTH",
+                code: 401,
+                userInfo: [NSLocalizedDescriptionKey: "Missing authenticated email"]
+            )
+        }
+
+        isLoading = true
+        defer { isLoading = false }
+
+        try await db.collection("announcements").document(announcementID).updateData([
+            "title": title,
+            "body": body,
+            "department": department,
+            "isUrgent": isUrgent,
+            "link": link as Any,
+            "createdByUID": user.uid,
+            "createdByEmail": email,
+            "status": AnnouncementStatus.pending.rawValue,
+            "submittedAt": Timestamp(date: Date()),
+            "approvedAt": NSNull(),
+            "rejectedAt": NSNull(),
+            "startDate": Timestamp(date: startDate),
+            "endDate": Timestamp(date: endDate),
+            "latitude": coordinate.latitude,
+            "longitude": coordinate.longitude
+        ])
     }
 }

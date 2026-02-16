@@ -4,7 +4,6 @@ enum AnnouncerAnnouncementFilter: String, CaseIterable, Identifiable {
     case all = "All"
     case pending = "Pending"
     case scheduled = "Scheduled"
-    case approved = "Approved"
     case active = "Active"
     case declined = "Declined"
     case expired = "Expired"
@@ -20,9 +19,7 @@ enum AnnouncerAnnouncementFilter: String, CaseIterable, Identifiable {
         case .pending:
             return .pending
         case .scheduled:
-            return .approved
-        case .approved:
-            return .approved
+            return .scheduled
         case .active:
             return .active
         case .declined:

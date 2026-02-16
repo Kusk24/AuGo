@@ -3,6 +3,7 @@ import SwiftUI
 struct CreateAnnouncementView: View {
     
     @Binding var isPresentedFromHome: Bool
+    let editingAnnouncement: Announcement?
     
     @EnvironmentObject var authManager: AuthenticationManager
     @StateObject private var announcementManager = AnnouncementManager()
@@ -15,6 +16,20 @@ struct CreateAnnouncementView: View {
     @State private var endDate = Date().addingTimeInterval(60*60*24)
     
     @State private var navigateToMap = false
+
+    init(
+        isPresentedFromHome: Binding<Bool>,
+        editingAnnouncement: Announcement? = nil
+    ) {
+        _isPresentedFromHome = isPresentedFromHome
+        self.editingAnnouncement = editingAnnouncement
+        _title = State(initialValue: editingAnnouncement?.title ?? "")
+        _content = State(initialValue: editingAnnouncement?.body ?? "")
+        _link = State(initialValue: editingAnnouncement?.link ?? "")
+        _isUrgent = State(initialValue: editingAnnouncement?.isUrgent ?? false)
+        _startDate = State(initialValue: editingAnnouncement?.startDate ?? Date())
+        _endDate = State(initialValue: editingAnnouncement?.endDate ?? Date().addingTimeInterval(60*60*24))
+    }
     
     private var canProceed: Bool {
         !title.isEmpty && !content.isEmpty && startDate <= endDate
@@ -44,23 +59,25 @@ struct CreateAnnouncementView: View {
             Button {
                 navigateToMap = true
             } label: {
-                Text("Choose Location")
+                Text(editingAnnouncement == nil ? "Choose Location" : "Update & Resubmit")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .disabled(!canProceed)
             .padding()
         }
-        .navigationTitle("Create Announcement")
+        .navigationTitle(editingAnnouncement == nil ? "Create Announcement" : "Edit Announcement")
         .navigationDestination(isPresented: $navigateToMap) {
             CreateAnnouncementMapView(
                 isPresentedFromHome: $isPresentedFromHome,
+                announcementID: editingAnnouncement?.id,
                 title: title,
                 content: content,
                 link: link.isEmpty ? nil : link,
                 isUrgent: isUrgent,
                 startDate: startDate,
-                endDate: endDate
+                endDate: endDate,
+                initialCoordinate: editingAnnouncement?.coordinate
             )
         }
     }

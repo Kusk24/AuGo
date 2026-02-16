@@ -16,14 +16,13 @@ struct StatusBadge: View {
     
     private var color: Color {
         switch status {
-        case .pending: return .orange
-        case .approved: return .blue
+        case .pending: return .gray
+        case .scheduled: return .blue
         case .active: return .green
-        case .declined, .rejected: return .red
+        case .declined: return .red
         case .expired: return .gray
         case .removed: return .pink
         @unknown default: return .gray
         }
     }
 }
-

@@ -7,12 +7,14 @@ struct CreateAnnouncementMapView: View {
     
     @Binding var isPresentedFromHome: Bool
     
+    let announcementID: String?
     let title: String
     let content: String
     let link: String?
     let isUrgent: Bool
     let startDate: Date
     let endDate: Date
+    let initialCoordinate: CLLocationCoordinate2D?
     
     @EnvironmentObject var campusMapViewModel: CampusMapViewModel
     @EnvironmentObject var authManager: AuthenticationManager
@@ -57,7 +59,7 @@ struct CreateAnnouncementMapView: View {
             Button {
                 Task { await submit() }
             } label: {
-                Text(isSubmitting ? "Submitting..." : "Submit Announcement")
+                Text(isSubmitting ? "Submitting..." : (announcementID == nil ? "Submit Announcement" : "Resubmit Announcement"))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -66,7 +68,15 @@ struct CreateAnnouncementMapView: View {
         }
         .onAppear {
             cameraPosition = .region(campusMapViewModel.campusRegion)
-            center = campusMapViewModel.campusRegion.center
+            center = initialCoordinate ?? campusMapViewModel.campusRegion.center
+            if let initialCoordinate {
+                cameraPosition = .region(
+                    MKCoordinateRegion(
+                        center: initialCoordinate,
+                        span: campusMapViewModel.campusRegion.span
+                    )
+                )
+            }
         }
         .alert("Announcement", isPresented: $showAlert) {
             Button("OK") {
@@ -87,19 +97,33 @@ struct CreateAnnouncementMapView: View {
         isSubmitting = true
         
         do {
-            try await announcementManager.createAnnouncement(
-                title: title,
-                body: content,
-                department: announcer.affiliationName,
-                isUrgent: isUrgent,
-                link: link,
-                startDate: startDate,
-                endDate: endDate,
-                coordinate: coord,
-                announcerName: announcer.name
-            )
-            
-            alertMessage = "Announcement submitted for approval."
+            if let announcementID {
+                try await announcementManager.updateAndResubmitAnnouncement(
+                    announcementID: announcementID,
+                    title: title,
+                    body: content,
+                    department: announcer.affiliationName,
+                    isUrgent: isUrgent,
+                    link: link,
+                    startDate: startDate,
+                    endDate: endDate,
+                    coordinate: coord
+                )
+                alertMessage = "Announcement updated and resubmitted for approval."
+            } else {
+                try await announcementManager.createAnnouncement(
+                    title: title,
+                    body: content,
+                    department: announcer.affiliationName,
+                    isUrgent: isUrgent,
+                    link: link,
+                    startDate: startDate,
+                    endDate: endDate,
+                    coordinate: coord,
+                    announcerName: announcer.name
+                )
+                alertMessage = "Announcement submitted for approval."
+            }
             showAlert = true
             
         } catch {

@@ -9,9 +9,9 @@ struct PostPinView: View {
     var body: some View {
         let visual = ContentSymbolKit.postVisual(for: post.category)
         return Image(systemName: visual.symbol)
-            .font(.system(size: 17, weight: .semibold))
+            .font(.system(size: 18, weight: .semibold))
             .foregroundStyle(.white)
-            .frame(width: 30, height: 30)
+            .frame(width: 34, height: 34)
             .background(visual.color)
             .clipShape(Circle())
             .overlay(Circle().stroke(.white, lineWidth: 2))
@@ -152,9 +152,9 @@ struct AnnouncementPinView: View {
         Button(action: onTap) {
             VStack(spacing: 4) {
                 Image(systemName: symbolName)
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.system(size: 26, weight: .bold))
                     .foregroundColor(.white)
-                    .frame(width: 34, height: 34)
+                    .frame(width: 48, height: 48)
                     .background(pinColor)
                     .clipShape(Circle())
                     .overlay(
@@ -175,10 +175,10 @@ struct AnnouncementPinView: View {
     }
 
     private var pinColor: Color {
-        switch announcement.status {
+        switch announcement.displayStatus() {
         case .pending:
-            return .orange
-        case .approved:
+            return .gray
+        case .scheduled:
             return .blue
         case .active:
             return announcement.isUrgent ? .red : .green
@@ -186,16 +186,16 @@ struct AnnouncementPinView: View {
             return .gray
         case .removed:
             return .pink
-        case .declined, .rejected:
+        case .declined:
             return .red
         }
     }
 
     private var symbolName: String {
-        switch announcement.status {
+        switch announcement.displayStatus() {
         case .pending:
             return "clock.badge.exclamationmark.fill"
-        case .approved:
+        case .scheduled:
             return "checkmark.seal.fill"
         case .active:
             return "megaphone.fill"
@@ -203,7 +203,7 @@ struct AnnouncementPinView: View {
             return "clock.fill"
         case .removed:
             return "slash.circle.fill"
-        case .declined, .rejected:
+        case .declined:
             return "xmark.octagon.fill"
         }
     }

@@ -404,11 +404,11 @@ struct CampusMapView: View {
                         // Pin icon
                         Circle()
                             .fill(visual.color)
-                            .frame(width: 30, height: 30)
+                            .frame(width: 36, height: 36)
                             .overlay(
                                 Image(systemName: visual.symbol)
                                     .foregroundColor(.white)
-                                    .font(.system(size: 14))
+                                    .font(.system(size: 16))
                             )
                         
                         // Preview label
@@ -491,10 +491,10 @@ struct CampusMapView: View {
     }
 
     private func dotSize(for catchableTime: Int) -> CGFloat {
-        // Keep the dot visually simple and stable: minimum 5, capped at >300.
+        // Keep the dot visually simple and stable, but larger for better map visibility.
         let clamped = min(max(catchableTime, 5), 300)
         let normalized = Double(clamped - 5) / Double(300 - 5)
-        return CGFloat(10.0 + (normalized * 12.0))
+        return CGFloat(14.0 + (normalized * 14.0))
     }
 
     private func startARSpawnsListener() {

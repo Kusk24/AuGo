@@ -3,6 +3,7 @@ import SwiftUI
 struct AnnouncerAnnouncementsView: View {
     
     @StateObject private var viewModel = AnnouncerAnnouncementsViewModel()
+    @State private var editingAnnouncement: Announcement?
     
     var body: some View {
         VStack(spacing: 0) {
@@ -49,7 +50,9 @@ struct AnnouncerAnnouncementsView: View {
                 
             } else {
                 List(viewModel.filteredAnnouncements) { ann in
-                    AnnouncementRow(announcement: ann)
+                    AnnouncementRow(announcement: ann) {
+                        editingAnnouncement = ann
+                    }
                 }
                 .listStyle(.plain)
             }
@@ -57,6 +60,14 @@ struct AnnouncerAnnouncementsView: View {
         .navigationTitle("My Announcements")
         .onAppear {
             viewModel.startListening()
+        }
+        .sheet(item: $editingAnnouncement) { announcement in
+            NavigationStack {
+                CreateAnnouncementView(
+                    isPresentedFromHome: .constant(false),
+                    editingAnnouncement: announcement
+                )
+            }
         }
     }
 }
