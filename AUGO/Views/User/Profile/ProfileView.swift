@@ -1,6 +1,7 @@
 import SwiftUI
 import FirebaseAuth
 import FirebaseCore
+import FirebaseStorage
 
 struct ProfileView: View {
     
@@ -432,6 +433,8 @@ private struct EconomyInfoCard: View {
 private struct TodayPostCard: View {
     let post: Post
     let onDelete: () -> Void
+    @State private var resolvedPhotoURL: URL?
+    @State private var isLoadingPhoto = false
     
     private var timeAgo: String {
         let interval = Date().timeIntervalSince(post.date)
@@ -448,12 +451,44 @@ private struct TodayPostCard: View {
         }
     }
 
-    private var firstPhotoURL: URL? {
-        guard let photoPath = post.photoPaths.first else { return nil }
-        guard let app = FirebaseApp.app(), let bucket = app.options.storageBucket else { return nil }
-        let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
-        guard let escapedPath = photoPath.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
-        return URL(string: "https://firebasestorage.googleapis.com/v0/b/\(bucket)/o/\(escapedPath)?alt=media")
+    private var firstPhotoRawPath: String? { post.photoPaths.first }
+
+    private func loadPhotoURL() async {
+        guard let raw = firstPhotoRawPath?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            await MainActor.run {
+                resolvedPhotoURL = nil
+                isLoadingPhoto = false
+            }
+            return
+        }
+
+        if raw.hasPrefix("https://") || raw.hasPrefix("http://") {
+            await MainActor.run {
+                resolvedPhotoURL = URL(string: raw)
+                isLoadingPhoto = false
+            }
+            return
+        }
+
+        await MainActor.run { isLoadingPhoto = true }
+
+        if let objectPath = normalizedStorageObjectPath(raw) {
+            do {
+                let url = try await Storage.storage().reference(withPath: objectPath).downloadURL()
+                await MainActor.run {
+                    resolvedPhotoURL = url
+                    isLoadingPhoto = false
+                }
+                return
+            } catch {
+                print("⚠️ Failed to resolve post photo via Storage SDK for \(post.id ?? "unknown-post"): \(error.localizedDescription)")
+            }
+        }
+
+        await MainActor.run {
+            resolvedPhotoURL = firebaseMediaURL(from: raw)
+            isLoadingPhoto = false
+        }
     }
     
     var body: some View {
@@ -484,8 +519,8 @@ private struct TodayPostCard: View {
                 }
             }
 
-            if let firstPhotoURL {
-                AsyncImage(url: firstPhotoURL) { phase in
+            if let resolvedPhotoURL {
+                AsyncImage(url: resolvedPhotoURL) { phase in
                     switch phase {
                     case .empty:
                         ZStack {
@@ -511,6 +546,14 @@ private struct TodayPostCard: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 170)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
+            } else if isLoadingPhoto {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color(UIColor.systemGray5))
+                    ProgressView()
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 170)
             }
 
             Text(post.content)
@@ -561,6 +604,9 @@ private struct TodayPostCard: View {
                 )
                 .shadow(color: .black.opacity(0.06), radius: 4, y: 3)
         )
+        .task(id: firstPhotoRawPath ?? "") {
+            await loadPhotoURL()
+        }
     }
     
     private var categoryColor: Color {
@@ -581,13 +627,57 @@ private struct TodayPostCard: View {
 
 private struct CapturedCharacterCard: View {
     let capture: ARCapturedCharacter
+    @State private var resolvedPreviewURL: URL?
+    @State private var isLoadingPreview = false
 
-    private var previewURL: URL? {
-        guard let previewPath = capture.preview else { return nil }
-        guard let app = FirebaseApp.app(), let bucket = app.options.storageBucket else { return nil }
-        let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
-        guard let escapedPath = previewPath.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
-        return URL(string: "https://firebasestorage.googleapis.com/v0/b/\(bucket)/o/\(escapedPath)?alt=media")
+    private var previewURL: URL? { resolvedPreviewURL }
+
+    private var resolvedPreviewPath: String? {
+        if let explicit = normalizedStorageObjectPath(capture.preview), !explicit.isEmpty {
+            return explicit
+        }
+        guard let asset = normalizedStorageObjectPath(capture.assetPath) else { return nil }
+        guard let slashIndex = asset.lastIndex(of: "/") else { return nil }
+        let folder = asset[..<slashIndex]
+        return "\(folder)/preview.png"
+    }
+
+    private func loadPreviewURL() async {
+        guard let raw = resolvedPreviewPath?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            await MainActor.run {
+                resolvedPreviewURL = nil
+                isLoadingPreview = false
+            }
+            return
+        }
+
+        if raw.hasPrefix("https://") || raw.hasPrefix("http://") {
+            await MainActor.run {
+                resolvedPreviewURL = URL(string: raw)
+                isLoadingPreview = false
+            }
+            return
+        }
+
+        await MainActor.run { isLoadingPreview = true }
+
+        if let objectPath = normalizedStorageObjectPath(raw) {
+            do {
+                let url = try await Storage.storage().reference(withPath: objectPath).downloadURL()
+                await MainActor.run {
+                    resolvedPreviewURL = url
+                    isLoadingPreview = false
+                }
+                return
+            } catch {
+                print("⚠️ Failed to resolve captured preview via Storage SDK for \(capture.spawnId): \(error.localizedDescription)")
+            }
+        }
+
+        await MainActor.run {
+            resolvedPreviewURL = firebaseMediaURL(from: raw)
+            isLoadingPreview = false
+        }
     }
 
     private var footerText: String {
@@ -635,11 +725,16 @@ private struct CapturedCharacterCard: View {
                             placeholderView
                         }
                     }
+                } else if isLoadingPreview {
+                    ProgressView()
                 } else {
                     placeholderView
                 }
             }
             .frame(height: 156)
+            .task(id: resolvedPreviewPath ?? "") {
+                await loadPreviewURL()
+            }
 
             Text(capture.title)
                 .font(.subheadline.weight(.semibold))
@@ -687,4 +782,51 @@ private struct CapturedCharacterCard: View {
                 .foregroundColor(.secondary)
         }
     }
+}
+
+private func firebaseMediaURL(from rawValue: String) -> URL? {
+    let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !value.isEmpty else { return nil }
+
+    if value.hasPrefix("https://") || value.hasPrefix("http://") {
+        return URL(string: value)
+    }
+
+    let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+
+    if value.hasPrefix("gs://"),
+       let gsURL = URL(string: value),
+       let bucket = gsURL.host {
+        var objectPath = gsURL.path
+        while objectPath.hasPrefix("/") {
+            objectPath.removeFirst()
+        }
+        guard let escapedPath = objectPath.addingPercentEncoding(withAllowedCharacters: allowed) else {
+            return nil
+        }
+        return URL(string: "https://firebasestorage.googleapis.com/v0/b/\(bucket)/o/\(escapedPath)?alt=media")
+    }
+
+    guard let app = FirebaseApp.app(), let bucket = app.options.storageBucket else { return nil }
+    var objectPath = value
+    while objectPath.hasPrefix("/") {
+        objectPath.removeFirst()
+    }
+    guard let escapedPath = objectPath.addingPercentEncoding(withAllowedCharacters: allowed) else {
+        return nil
+    }
+    return URL(string: "https://firebasestorage.googleapis.com/v0/b/\(bucket)/o/\(escapedPath)?alt=media")
+}
+
+private func normalizedStorageObjectPath(_ rawValue: String?) -> String? {
+    guard var value = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+        return nil
+    }
+    if value.hasPrefix("gs://"), let gsURL = URL(string: value) {
+        value = gsURL.path
+    }
+    while value.hasPrefix("/") {
+        value.removeFirst()
+    }
+    return value.isEmpty ? nil : value
 }

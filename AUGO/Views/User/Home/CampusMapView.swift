@@ -480,7 +480,7 @@ struct CampusMapView: View {
         case 21...79:
             return .green
         case 80...150:
-            return .pink
+            return .yellow
         case 151...300:
             return .red
         case 301...:

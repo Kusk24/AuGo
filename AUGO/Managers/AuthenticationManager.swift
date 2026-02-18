@@ -450,7 +450,7 @@ class AuthenticationManager: ObservableObject {
                     spawnId: spawnId,
                     title: title,
                     assetPath: assetPath,
-                    preview: entry["preview"] as? String,
+                    preview: (entry["preview"] as? String) ?? (entry["previewPath"] as? String),
                     coinValue: parseDouble(entry["coinValue"]),
                     pointValue: parseInt(entry["pointValue"]),
                     catchCount: entry["catchCount"] as? Int ?? 0,
@@ -564,6 +564,7 @@ class AuthenticationManager: ObservableObject {
                     ]
                     if let preview = $0.preview {
                         payload["preview"] = preview
+                        payload["previewPath"] = preview
                     }
                     if let lastCapturedAt = $0.lastCapturedAt {
                         payload["lastCapturedAt"] = Timestamp(date: lastCapturedAt)

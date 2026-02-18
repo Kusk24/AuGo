@@ -166,9 +166,12 @@ private struct ARRealityContainerView: UIViewRepresentable {
         private var postAnchors: [String: AnchorEntity] = [:]
         private var postCards: [String: UIHostingController<ARNearbyPostCard>] = [:]
         private var postPriority: [String: Int] = [:]
+        private var postLayoutSeed: simd_float4x4?
         private var smoothedCardFrames: [String: CGRect] = [:]
         private var displayLink: CADisplayLink?
         private let floatingStartTime = CACurrentMediaTime()
+        private let postFloatAmplitude: CGFloat = 13.0
+        private let postFloatFrequencyHz: Double = 0.595
         var onCapture: () -> Void
 
         init(onCapture: @escaping () -> Void) {
@@ -193,6 +196,9 @@ private struct ARRealityContainerView: UIViewRepresentable {
         func updateFloatingPosts(_ posts: [ARNearbyPost]) {
             guard let arView else { return }
             postPriority = Dictionary(uniqueKeysWithValues: posts.enumerated().map { ($0.element.id, $0.offset) })
+            if postLayoutSeed == nil {
+                postLayoutSeed = arView.cameraTransform.matrix
+            }
 
             let activeIDs = Set(posts.map(\.id))
             for existingID in postAnchors.keys where !activeIDs.contains(existingID) {
@@ -203,6 +209,9 @@ private struct ARRealityContainerView: UIViewRepresentable {
                 postCards[existingID]?.view.removeFromSuperview()
                 postCards.removeValue(forKey: existingID)
             }
+            if postAnchors.isEmpty {
+                postLayoutSeed = arView.cameraTransform.matrix
+            }
 
             for (index, post) in posts.enumerated() {
                 if let host = postCards[post.id] {
@@ -210,7 +219,7 @@ private struct ARRealityContainerView: UIViewRepresentable {
                     continue
                 }
 
-                let anchor = AnchorEntity(world: floatingPostPosition(index: index, arView: arView))
+                let anchor = AnchorEntity(world: floatingPostPosition(index: index, total: posts.count, arView: arView))
                 arView.scene.addAnchor(anchor)
                 postAnchors[post.id] = anchor
 
@@ -224,25 +233,35 @@ private struct ARRealityContainerView: UIViewRepresentable {
             updateFloatingPostScreenPositions()
         }
 
-        private func floatingPostPosition(index: Int, arView: ARView) -> SIMD3<Float> {
-            let cameraTransform = arView.cameraTransform.matrix
-            let cameraPosition = SIMD3<Float>(cameraTransform.columns.3.x, cameraTransform.columns.3.y, cameraTransform.columns.3.z)
-            let forward = -SIMD3<Float>(cameraTransform.columns.2.x, cameraTransform.columns.2.y, cameraTransform.columns.2.z)
-            let right = SIMD3<Float>(cameraTransform.columns.0.x, cameraTransform.columns.0.y, cameraTransform.columns.0.z)
-            let up = SIMD3<Float>(cameraTransform.columns.1.x, cameraTransform.columns.1.y, cameraTransform.columns.1.z)
+        private func floatingPostPosition(index: Int, total: Int, arView: ARView) -> SIMD3<Float> {
+            let seed = postLayoutSeed ?? arView.cameraTransform.matrix
+            let cameraPosition = SIMD3<Float>(seed.columns.3.x, seed.columns.3.y, seed.columns.3.z)
+            let forward = -SIMD3<Float>(seed.columns.2.x, seed.columns.2.y, seed.columns.2.z)
+            let right = SIMD3<Float>(seed.columns.0.x, seed.columns.0.y, seed.columns.0.z)
+            let up = SIMD3<Float>(seed.columns.1.x, seed.columns.1.y, seed.columns.1.z)
 
             let normalizedForward = simd_normalize(forward)
             let normalizedRight = simd_normalize(right)
             let normalizedUp = simd_normalize(up)
 
-            let horizontalOffset = Float(index % 2 == 0 ? -1 : 1) * (0.35 + Float(index) * 0.12)
-            let depth = 1.7 + Float(index) * 0.35
-            let height = 0.2 + Float(index % 3) * 0.08
+            let count = max(total, 1)
+            let arc: Float = count <= 3 ? 0.9 : min(2.2, 0.9 + Float(count - 3) * 0.18)
+            let normalizedIndex = count == 1 ? 0 : Float(index) / Float(count - 1)
+            let azimuth = -arc / 2 + (arc * normalizedIndex)
+            let ring = Float(index / 5)
+
+            let depth: Float = 1.45 + ring * 0.35
+            let horizontalOffset = tan(azimuth) * depth
+            // Start around eye/chest level so standing straight can see cards.
+            let baseVertical: Float = -0.02
+            // For dense sets, distribute posts up/down so users can discover by scanning.
+            let verticalWave = sin(Float(index) * 1.3) * (count > 4 ? 0.42 : 0.2)
+            let verticalOffset = baseVertical + verticalWave - ring * 0.08
 
             return cameraPosition
                 + normalizedForward * depth
                 + normalizedRight * horizontalOffset
-                + normalizedUp * height
+                + normalizedUp * verticalOffset
         }
 
         private func startDisplayLink() {
@@ -261,8 +280,13 @@ private struct ARRealityContainerView: UIViewRepresentable {
             guard let arView else { return }
 
             let t = CACurrentMediaTime() - floatingStartTime
-            let bounds = arView.bounds.insetBy(dx: 8, dy: 8)
-            let visibilityBounds = arView.bounds.insetBy(dx: -140, dy: -140)
+            let topReserved = min(240, arView.bounds.height * 0.26)
+            let bottomReserved = max(130, arView.safeAreaInsets.bottom + 96)
+            let bounds = usableCardBounds(in: arView.bounds, topReserved: topReserved, bottomReserved: bottomReserved)
+            let visibilityBounds = arView.bounds.insetBy(dx: 12, dy: 12)
+            let cameraTransform = arView.cameraTransform.matrix
+            let cameraPosition = SIMD3<Float>(cameraTransform.columns.3.x, cameraTransform.columns.3.y, cameraTransform.columns.3.z)
+            let cameraForward = simd_normalize(-SIMD3<Float>(cameraTransform.columns.2.x, cameraTransform.columns.2.y, cameraTransform.columns.2.z))
 
             let sortedIDs = postAnchors.keys.sorted {
                 (postPriority[$0] ?? .max) < (postPriority[$1] ?? .max)
@@ -273,6 +297,18 @@ private struct ARRealityContainerView: UIViewRepresentable {
                 guard let anchor = postAnchors[id] else { continue }
                 guard let host = postCards[id] else { continue }
                 let worldPosition = anchor.position(relativeTo: nil)
+                let toPost = worldPosition - cameraPosition
+                let distance = simd_length(toPost)
+                guard distance > 0.001 else {
+                    host.view.isHidden = true
+                    continue
+                }
+                // Hide posts that are outside the current view direction.
+                let facing = simd_dot(simd_normalize(toPost), cameraForward)
+                if facing < 0.25 {
+                    host.view.isHidden = true
+                    continue
+                }
                 guard let projected = arView.project(worldPosition) else {
                     host.view.isHidden = true
                     continue
@@ -283,7 +319,8 @@ private struct ARRealityContainerView: UIViewRepresentable {
                     continue
                 }
 
-                let bob = CGFloat(sin(t * 1.7 + Double(abs(id.hashValue % 7))) * 6.0)
+                let angularVelocity = postFloatFrequencyHz * 2.0 * Double.pi
+                let bob = CGFloat(sin(t * angularVelocity) * postFloatAmplitude)
                 let size = host.view.bounds.size == .zero ? CGSize(width: 230, height: 180) : host.view.bounds.size
                 let frame = CGRect(
                     x: projected.x - (size.width / 2),
@@ -294,46 +331,16 @@ private struct ARRealityContainerView: UIViewRepresentable {
                 preferredFrames.append((id: id, frame: frame))
             }
 
-            // Soft collision resolution: keep all cards visible, push overlapping cards apart.
-            var resolvedFrames = preferredFrames
-            if resolvedFrames.count > 1 {
-                for _ in 0..<8 {
-                    for i in 0..<resolvedFrames.count {
-                        for j in 0..<i {
-                            let a = resolvedFrames[i].frame
-                            let b = resolvedFrames[j].frame
-                            let overlap = a.insetBy(dx: -10, dy: -10).intersection(b.insetBy(dx: -10, dy: -10))
-                            guard !overlap.isNull, overlap.width > 0, overlap.height > 0 else { continue }
-
-                            let ac = CGPoint(x: a.midX, y: a.midY)
-                            let bc = CGPoint(x: b.midX, y: b.midY)
-                            var dx = ac.x - bc.x
-                            var dy = ac.y - bc.y
-                            if abs(dx) < 0.01 && abs(dy) < 0.01 {
-                                dx = (i % 2 == 0) ? 1 : -1
-                                dy = (j % 2 == 0) ? 1 : -1
-                            }
-                            let length = max(sqrt(dx * dx + dy * dy), 0.001)
-                            let push = min(max(overlap.width, overlap.height) * 0.32, 22)
-                            let offsetX = (dx / length) * push
-                            let offsetY = (dy / length) * push
-
-                            var moved = resolvedFrames[i].frame
-                            moved.origin.x += offsetX
-                            moved.origin.y += offsetY
-                            resolvedFrames[i].frame = moved
-                        }
-                    }
-                }
-            }
+            // Resolve collisions aggressively so cards remain readable even in dense clusters.
+            let resolvedFrames = separateOverlaps(preferredFrames, in: bounds)
 
             for (rank, item) in resolvedFrames.enumerated() {
                 guard let host = postCards[item.id] else { continue }
                 host.view.isHidden = false
                 let previous = smoothedCardFrames[item.id] ?? item.frame
                 let smoothed = CGRect(
-                    x: previous.origin.x + (item.frame.origin.x - previous.origin.x) * 0.24,
-                    y: previous.origin.y + (item.frame.origin.y - previous.origin.y) * 0.24,
+                    x: previous.origin.x + (item.frame.origin.x - previous.origin.x) * 0.32,
+                    y: previous.origin.y + (item.frame.origin.y - previous.origin.y) * 0.5,
                     width: item.frame.width,
                     height: item.frame.height
                 )
@@ -349,6 +356,63 @@ private struct ARRealityContainerView: UIViewRepresentable {
             for (id, host) in postCards where !visibleIDs.contains(id) {
                 host.view.isHidden = true
             }
+        }
+
+        private func usableCardBounds(in rect: CGRect, topReserved: CGFloat, bottomReserved: CGFloat) -> CGRect {
+            let width = max(rect.width - 16, 1)
+            let height = max(rect.height - topReserved - bottomReserved, 1)
+            return CGRect(x: rect.minX + 8, y: rect.minY + topReserved, width: width, height: height)
+        }
+
+        private func separateOverlaps(_ input: [(id: String, frame: CGRect)], in bounds: CGRect) -> [(id: String, frame: CGRect)] {
+            guard input.count > 1 else { return input }
+            var output = input
+            let minimumSpacing: CGFloat = 22
+
+            for _ in 0..<14 {
+                var movedAny = false
+
+                for i in 0..<output.count {
+                    for j in 0..<i {
+                        let frameA = output[i].frame
+                        let frameB = output[j].frame
+                        let expandedA = frameA.insetBy(dx: -minimumSpacing, dy: -minimumSpacing)
+                        let expandedB = frameB.insetBy(dx: -minimumSpacing, dy: -minimumSpacing)
+                        let overlap = expandedA.intersection(expandedB)
+                        guard !overlap.isNull, overlap.width > 0, overlap.height > 0 else { continue }
+
+                        let centerA = CGPoint(x: frameA.midX, y: frameA.midY)
+                        let centerB = CGPoint(x: frameB.midX, y: frameB.midY)
+                        var dx = centerA.x - centerB.x
+                        var dy = centerA.y - centerB.y
+                        if abs(dx) < 0.01 && abs(dy) < 0.01 {
+                            dx = (i % 2 == 0) ? 1 : -1
+                            dy = (j % 2 == 0) ? 1 : -1
+                        }
+
+                        let length = max(sqrt(dx * dx + dy * dy), 0.001)
+                        let push = min(max(overlap.width, overlap.height) * 0.5, 30)
+                        let offsetX = (dx / length) * push
+                        let offsetY = (dy / length) * push
+
+                        var movedFrame = frameA
+                        movedFrame.origin.x += offsetX
+                        movedFrame.origin.y += offsetY
+                        movedFrame = clamp(movedFrame, to: bounds)
+
+                        if movedFrame != output[i].frame {
+                            output[i].frame = movedFrame
+                            movedAny = true
+                        }
+                    }
+                }
+
+                if !movedAny {
+                    break
+                }
+            }
+
+            return output
         }
 
         private func clamp(_ frame: CGRect, to bounds: CGRect) -> CGRect {
@@ -1295,8 +1359,8 @@ private struct ARSpawn {
 
     init?(documentID: String, data: [String: Any]) {
         guard
-            let title = data["title"] as? String,
-            let assetPath = data["assetPath"] as? String,
+            let title = (data["title"] as? String) ?? (data["name"] as? String),
+            let assetPath = (data["assetPath"] as? String) ?? (data["modelPath"] as? String),
             let lat = ARSpawn.toDouble(data["latitude"]),
             let lon = ARSpawn.toDouble(data["longitude"]),
             let revealRadius = ARSpawn.toDouble(data["revealRadius"]),
@@ -1317,7 +1381,7 @@ private struct ARSpawn {
         self.pointValue = ARSpawn.toInt(data["point"]) ?? 0
         self.catchableTime = max(1, ARSpawn.toInt(data["catchable_time"]) ?? 1)
         self.respawnDays = max(1, ARSpawn.toInt(data["respawn_days"]) ?? 1)
-        self.preview = data["preview"] as? String
+        self.preview = (data["preview"] as? String) ?? (data["previewPath"] as? String)
     }
 
     private static func toDouble(_ value: Any?) -> Double? {

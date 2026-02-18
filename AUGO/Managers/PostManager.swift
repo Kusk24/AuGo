@@ -886,14 +886,29 @@ class PostManager: ObservableObject {
             return nil
         }
 
-        // Normalize category (handle different casings or accidental non-string values)
+        // Normalize category while preserving multi-word categories like "AR Challenge".
         let categoryRaw: String
-        if let catStr = categoryRawAny as? String {
-            // Capitalize first letter to match Post.PostCategory rawValue format
-            categoryRaw = catStr.prefix(1).uppercased() + catStr.dropFirst().lowercased()
-        } else {
-            let str = String(describing: categoryRawAny)
-            categoryRaw = str.prefix(1).uppercased() + str.dropFirst().lowercased()
+        let rawCategoryText = (categoryRawAny as? String) ?? String(describing: categoryRawAny)
+        let cleaned = rawCategoryText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedKey = cleaned
+            .lowercased()
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .replacingOccurrences(of: "  ", with: " ")
+
+        switch normalizedKey {
+        case "casual":
+            categoryRaw = Post.PostCategory.casual.rawValue
+        case "event":
+            categoryRaw = Post.PostCategory.event.rawValue
+        case "question":
+            categoryRaw = Post.PostCategory.question.rawValue
+        case "announcement":
+            categoryRaw = Post.PostCategory.announcement.rawValue
+        case "ar challenge", "archallenge":
+            categoryRaw = Post.PostCategory.arChallenge.rawValue
+        default:
+            categoryRaw = cleaned
         }
         
         guard let category = Post.PostCategory(rawValue: categoryRaw) else {
