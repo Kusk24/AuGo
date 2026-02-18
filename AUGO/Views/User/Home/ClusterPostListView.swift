@@ -67,12 +67,12 @@ private struct ClusterPostCard: View {
     private var categoryColor: Color {
         switch post.category {
         case .casual: return .yellow
+        case .lostFound: return .teal
+        case .complaint: return .purple
         case .event: return .orange
         case .question: return .blue
-        case .announcement: return .purple
+        case .announcement: return .gray
         case .arChallenge: return .green
-        case .lostFound: return .red
-        case .complaint: return .mint
         }
     }
 

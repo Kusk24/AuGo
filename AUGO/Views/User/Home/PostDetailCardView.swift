@@ -22,19 +22,19 @@ struct PostDetailCardView: View {
     private var categoryColor: Color {
         switch post.category {
         case .casual:
+            return .yellow
+        case .lostFound:
             return .teal
-        case .event:
+        case .complaint:
             return .purple
+        case .event:
+            return .orange
         case .question:
             return .blue
         case .announcement:
-            return .orange
+            return .gray
         case .arChallenge:
             return .green
-        case .lostFound:
-            return .red
-        case .complaint:
-            return .yellow
         }
     }
     
@@ -42,6 +42,10 @@ struct PostDetailCardView: View {
         switch post.category {
         case .casual:
             return "bolt.heart.fill"
+        case .lostFound:
+            return "mappin.and.ellipse"
+        case .complaint:
+            return "exclamationmark.triangle.fill"
         case .event:
             return "calendar"
         case .question:
@@ -50,10 +54,6 @@ struct PostDetailCardView: View {
             return "megaphone.fill"
         case .arChallenge:
             return "arkit"
-        case .lostFound:
-            return "location.fill.viewfinder"
-        case .complaint:
-            return "exclamationmark.bubble.fill"
         }
     }
     

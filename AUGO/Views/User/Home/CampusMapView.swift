@@ -17,6 +17,13 @@ private enum CampusMapSheet: Identifiable {
     }
 }
 
+private enum PostDisplayMode: String, CaseIterable, Identifiable {
+    case normal = "Normal Posts"
+    case special = "Special Posts"
+
+    var id: String { rawValue }
+}
+
 struct CampusMapView: View {
     @Binding var showAnnouncement: Bool
 
@@ -49,7 +56,10 @@ struct CampusMapView: View {
     @State private var alertMessage = ""
     @State private var showNotificationList = false
     // MARK: - FILTER
-    @State private var selectedCategories: Set<Post.PostCategory> = Set(Post.PostCategory.allCases)
+    @State private var selectedCategories: Set<Post.PostCategory> = Set([
+        .casual, .lostFound, .complaint, .event, .question, .arChallenge
+    ])
+    @State private var postDisplayMode: PostDisplayMode = .normal
     @State private var displayClusters: [PostCluster] = []
     @State private var arSpawnDots: [ARSpawnMapDot] = []
     @State private var arSpawnsListener: ListenerRegistration?
@@ -57,27 +67,34 @@ struct CampusMapView: View {
     private func updateClustersAndMapping(posts: [Post]? = nil) {
         let postsToUse = posts ?? postManager.allPosts
         let filtered = postsToUse.filter { selectedCategories.contains($0.category) }
-        print("🎯 Filtering: \(postsToUse.count) total posts -> \(filtered.count) after category filter")
+        let modeFiltered = filtered.filter { postDisplayMode == .special ? isSpecialEmojiPost($0) : !isSpecialEmojiPost($0) }
+        print("🎯 Filtering: \(postsToUse.count) total posts -> \(filtered.count) after category filter -> \(modeFiltered.count) in \(postDisplayMode.rawValue)")
         
-        let userIDs = Set(filtered.map(\.userId))
+        let userIDs = Set(modeFiltered.map(\.userId))
         let knownUserIDs = Set(userDisplayNames.keys)
         if !userIDs.isSubset(of: knownUserIDs) {
             Task {
-                await ensureUserDisplayNames(for: filtered)
+                await ensureUserDisplayNames(for: modeFiltered)
             }
         }
 
-        let (clusters, mapping) = createClusters(from: filtered)
-        print("📌 Created \(clusters.count) clusters from \(filtered.count) posts")
+        let (clusters, mapping) = postDisplayMode == .special
+            ? createSpecialClusters(from: modeFiltered)
+            : createClusters(from: modeFiltered)
+        print("📌 Created \(clusters.count) clusters from \(modeFiltered.count) posts")
 
         displayClusters = clusters
         postMapping = mapping
-        postByDocumentID = Dictionary(uniqueKeysWithValues: filtered.compactMap { post in
+        postByDocumentID = Dictionary(uniqueKeysWithValues: modeFiltered.compactMap { post in
             guard let id = post.id else { return nil }
             return (id, post)
         })
         print("🗺️ Updated postMapping with \(mapping.count) entries")
         print("🔑 Mapping keys: \(mapping.keys.map { $0.uuidString })")
+    }
+
+    private var categoryFilterOptions: [Post.PostCategory] {
+        [.casual, .lostFound, .complaint, .event, .question, .arChallenge]
     }
     
     private func createClusters(from posts: [Post]) -> ([PostCluster], [UUID: Post]) {
@@ -98,7 +115,8 @@ struct CampusMapView: View {
                 message: base.content,
                 coordinate: base.coordinate,
                 category: convertCategory(base.category),
-                createdAt: base.date
+                createdAt: base.date,
+                emojiPin: base.emojiPin
             )
             
             newMapping[campusPost.id] = base
@@ -113,7 +131,8 @@ struct CampusMapView: View {
                         message: post.content,
                         coordinate: post.coordinate,
                         category: convertCategory(post.category),
-                        createdAt: post.date
+                        createdAt: post.date,
+                        emojiPin: post.emojiPin
                     )
                     newMapping[cp.id] = post
                     grouped.append(cp)
@@ -127,6 +146,34 @@ struct CampusMapView: View {
 
         print("✅ Created \(result.count) clusters with total of \(newMapping.count) posts")
         return (result, newMapping)
+    }
+
+    private func createSpecialClusters(from posts: [Post]) -> ([PostCluster], [UUID: Post]) {
+        var mapping: [UUID: Post] = [:]
+        let clusters: [PostCluster] = posts.enumerated().map { index, post in
+            let offset = Double(index % 5) * 0.00001
+            let displayCoordinate = CLLocationCoordinate2D(
+                latitude: post.coordinate.latitude + offset,
+                longitude: post.coordinate.longitude - offset
+            )
+            let campusPost = CampusPost(
+                sourcePostID: post.id,
+                author: displayName(for: post.userId),
+                message: post.content,
+                coordinate: displayCoordinate,
+                category: convertCategory(post.category),
+                createdAt: post.date,
+                emojiPin: post.emojiPin
+            )
+            mapping[campusPost.id] = post
+            return PostCluster(coordinate: campusPost.coordinate, posts: [campusPost])
+        }
+        return (clusters, mapping)
+    }
+
+    private func isSpecialEmojiPost(_ post: Post) -> Bool {
+        let emoji = post.emojiPin?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return !emoji.isEmpty
     }
     
     private func displayName(for userId: String) -> String {
@@ -240,12 +287,14 @@ struct CampusMapView: View {
         switch category {
         case .casual:
             return .casual
+        case .lostFound:
+            return .lostFound
+        case .complaint:
+            return .complaint
         case .event:
             return .event
         case .question:
             return .question
-        case .announcement:
-            return .announcement
         case .arChallenge:
             return .arChallenge
         @unknown default:
@@ -286,34 +335,48 @@ struct CampusMapView: View {
     private var filterMenu: some View {
         VStack {
             HStack {
-                Menu {
-                    ForEach(Post.PostCategory.allCases) { category in
-                        Button {
-                            if selectedCategories.contains(category) {
-                                selectedCategories.remove(category)
-                            } else {
-                                selectedCategories.insert(category)
-                            }
-                        } label: {
-                            HStack {
-                                Text(category.rawValue)
-                                Spacer()
-                                Image(systemName:
-                                        selectedCategories.contains(category)
-                                      ? "checkmark.square.fill"
-                                      : "square"
-                                )
-                            }
+                VStack(alignment: .leading, spacing: 8) {
+                    Picker("Post Mode", selection: $postDisplayMode) {
+                        ForEach(PostDisplayMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
                         }
                     }
-                } label: {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.title3)
-                        .foregroundStyle(Color.Brand.primary)
-                        .padding(10)
-                        .background(.white)
-                        .clipShape(Circle())
-                        .shadow(radius: 4)
+                    .pickerStyle(.segmented)
+                    .frame(width: 220)
+                    .padding(6)
+                    .background(.white.opacity(0.95))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .shadow(radius: 3)
+
+                    Menu {
+                        ForEach(categoryFilterOptions) { category in
+                            Button {
+                                if selectedCategories.contains(category) {
+                                    selectedCategories.remove(category)
+                                } else {
+                                    selectedCategories.insert(category)
+                                }
+                            } label: {
+                                HStack {
+                                    Text(category.rawValue)
+                                    Spacer()
+                                    Image(systemName:
+                                            selectedCategories.contains(category)
+                                          ? "checkmark.square.fill"
+                                          : "square"
+                                    )
+                                }
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.title3)
+                            .foregroundStyle(Color.Brand.primary)
+                            .padding(10)
+                            .background(.white)
+                            .clipShape(Circle())
+                            .shadow(radius: 4)
+                    }
                 }
                 .padding()
 
@@ -407,9 +470,16 @@ struct CampusMapView: View {
                             .fill(visual.color)
                             .frame(width: 29, height: 29)
                             .overlay(
-                                Image(systemName: visual.symbol)
-                                    .foregroundColor(.white)
-                                    .font(.system(size: 13))
+                                Group {
+                                    if let emoji = post.emojiPin, !emoji.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                        Text(emoji)
+                                            .font(.system(size: 17))
+                                    } else {
+                                        Image(systemName: visual.symbol)
+                                            .foregroundColor(.white)
+                                            .font(.system(size: 13))
+                                    }
+                                }
                             )
                         
                         // Preview label
@@ -453,20 +523,18 @@ struct CampusMapView: View {
         switch category {
         case .casual:
             return .casual
+        case .lostFound:
+            return .lostFound
+        case .complaint:
+            return .complaint
         case .event:
             return .event
         case .question:
             return .question
         case .announcement:
-            return .announcement
+            return .casual
         case .arChallenge:
             return .arChallenge
-        case .lostFound:
-            // Fallback to casual for unsupported backend category
-            return .casual
-        case .complaint:
-            // Fallback to casual for unsupported backend category
-            return .casual
         }
     }
     
@@ -580,7 +648,7 @@ struct CampusMapView: View {
                         mapView
                         if displayClusters.isEmpty {
                             VStack {
-                                Text("No posts nearby")
+                                Text(postDisplayMode == .special ? "No emoji posts nearby" : "No posts nearby")
                                     .font(.footnote)
                                     .padding(8)
                                     .background(.ultraThinMaterial)
@@ -625,6 +693,10 @@ struct CampusMapView: View {
         }
         .onChange(of: selectedCategories) { _, newValue in
             print("🔍 Filter changed: \(newValue.count) categories selected")
+            updateClustersAndMapping()
+        }
+        .onChange(of: postDisplayMode) { _, newValue in
+            print("🎭 Post mode changed: \(newValue.rawValue)")
             updateClustersAndMapping()
         }
         .toolbar {

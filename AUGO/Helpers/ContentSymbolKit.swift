@@ -9,17 +9,17 @@ enum ContentSymbolKit {
     static func postVisual(for category: PostCategory) -> PostVisual {
         switch category {
         case .casual:
-            return PostVisual(symbol: "bubble.left.and.text.bubble.right.fill", color: .teal)
+            return PostVisual(symbol: "bubble.left.and.text.bubble.right.fill", color: .yellow)
         case .lostFound:
-            return PostVisual(symbol: "magnifyingglass.circle.fill", color: .red)
+            return PostVisual(symbol: "mappin.and.ellipse", color: .teal)
         case .complaint:
-            return PostVisual(symbol: "exclamationmark.bubble.fill", color: Color(red: 1.0, green: 0.84, blue: 0.0))
+            return PostVisual(symbol: "exclamationmark.triangle.fill", color: .purple)
         case .event:
-            return PostVisual(symbol: "calendar.badge.clock", color: .purple)
+            return PostVisual(symbol: "calendar.badge.clock", color: .orange)
         case .question:
             return PostVisual(symbol: "questionmark.circle.fill", color: .blue)
         case .announcement:
-            return PostVisual(symbol: "megaphone.fill", color: .orange)
+            return PostVisual(symbol: "megaphone.fill", color: .gray)
         case .arChallenge:
             return PostVisual(symbol: "arkit", color: .green)
         }
@@ -28,13 +28,15 @@ enum ContentSymbolKit {
     static func postVisual(for category: Post.PostCategory) -> PostVisual {
         switch category {
         case .casual:
-            return PostVisual(symbol: "bubble.left.and.text.bubble.right.fill", color: .teal)
+            return PostVisual(symbol: "bubble.left.and.text.bubble.right.fill", color: .yellow)
+        case .lostFound:
+            return PostVisual(symbol: "mappin.and.ellipse", color: .teal)
+        case .complaint:
+            return PostVisual(symbol: "exclamationmark.triangle.fill", color: .purple)
         case .event:
-            return PostVisual(symbol: "calendar.badge.clock", color: .purple)
+            return PostVisual(symbol: "calendar.badge.clock", color: .orange)
         case .question:
             return PostVisual(symbol: "questionmark.circle.fill", color: .blue)
-        case .announcement:
-            return PostVisual(symbol: "megaphone.fill", color: .orange)
         case .arChallenge:
             return PostVisual(symbol: "arkit", color: .green)
         }

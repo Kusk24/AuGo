@@ -8,9 +8,17 @@ struct PostPinView: View {
 
     var body: some View {
         let visual = ContentSymbolKit.postVisual(for: post.category)
-        return Image(systemName: visual.symbol)
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(.white)
+        let emoji = post.emojiPin?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return Group {
+            if !emoji.isEmpty {
+                Text(emoji)
+                    .font(.system(size: 16))
+            } else {
+                Image(systemName: visual.symbol)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+        }
             .frame(width: 27, height: 27)
             .background(visual.color)
             .clipShape(Circle())
@@ -32,13 +40,23 @@ struct PostBubbleView: View {
             VStack(alignment: .leading, spacing: 8) {
                 // Category badge
                 HStack {
-                    Label(post.category.rawValue, systemImage: visual.symbol)
-                        .font(.caption2.bold())
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(visual.color.opacity(0.2))
-                        .foregroundColor(visual.color)
-                        .clipShape(Capsule())
+                    if let emoji = post.emojiPin, !emoji.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text("\(emoji) \(post.category.rawValue)")
+                            .font(.caption2.bold())
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(visual.color.opacity(0.2))
+                            .foregroundColor(visual.color)
+                            .clipShape(Capsule())
+                    } else {
+                        Label(post.category.rawValue, systemImage: visual.symbol)
+                            .font(.caption2.bold())
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(visual.color.opacity(0.2))
+                            .foregroundColor(visual.color)
+                            .clipShape(Capsule())
+                    }
                     
                     Spacer()
                     

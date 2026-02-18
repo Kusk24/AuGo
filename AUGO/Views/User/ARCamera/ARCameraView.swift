@@ -980,6 +980,8 @@ private final class ARCameraViewModel: ObservableObject {
                 let firstPhotoURL = firstPath.flatMap { path in
                     try? storageDownloadURL(for: path)
                 }
+                let emojiPin = (data["emojiPin"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
 
                 return ARNearbyPost(
                     id: doc.documentID,
@@ -989,6 +991,7 @@ private final class ARCameraViewModel: ObservableObject {
                     dislikeCount: dislikeCount,
                     distanceMeters: distance,
                     firstPhotoURL: firstPhotoURL,
+                    emojiPin: (emojiPin?.isEmpty == false) ? emojiPin : nil,
                     proximityScale: proximityScale(for: distance)
                 )
             }
@@ -1298,8 +1301,29 @@ private final class ARCameraViewModel: ObservableObject {
         guard let raw else { return .casual }
         let text = String(describing: raw).trimmingCharacters(in: .whitespacesAndNewlines)
         if text.isEmpty { return .casual }
-        let normalized = text.prefix(1).uppercased() + text.dropFirst().lowercased()
-        return Post.PostCategory(rawValue: normalized) ?? .casual
+        let normalizedKey = text
+            .lowercased()
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .replacingOccurrences(of: "  ", with: " ")
+        switch normalizedKey {
+        case "casual":
+            return .casual
+        case "lost & found", "lost and found", "lostfound":
+            return .lostFound
+        case "complaint", "complaints":
+            return .complaint
+        case "event":
+            return .event
+        case "question":
+            return .question
+        case "announcement":
+            return .casual
+        case "ar challenge", "archallenge":
+            return .arChallenge
+        default:
+            return .casual
+        }
     }
 
     private func characterScale(for distance: Double, spawn: ARSpawn) -> CGFloat {
@@ -1419,6 +1443,7 @@ private struct ARNearbyPost: Identifiable {
     let dislikeCount: Int
     let distanceMeters: Double
     let firstPhotoURL: URL?
+    let emojiPin: String?
     let proximityScale: CGFloat
 }
 
@@ -1439,6 +1464,18 @@ private struct ARNearbyPostCard: View {
                     .padding(.vertical, 4)
                     .background(visual.color.opacity(0.18))
                     .clipShape(Capsule())
+                if let emoji = post.emojiPin {
+                    HStack(spacing: 4) {
+                        Text(emoji)
+                        Text("Special")
+                    }
+                    .font(.caption2.weight(.bold))
+                    .foregroundColor(.pink)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.pink.opacity(0.16))
+                    .clipShape(Capsule())
+                }
                 Spacer()
             }
 

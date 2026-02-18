@@ -163,13 +163,15 @@ struct CreatePostMapView: View {
     private func colorFor(_ category: Post.PostCategory) -> Color {
         switch category {
         case .casual:
+            return .yellow
+        case .lostFound:
             return .teal
-        case .event:
+        case .complaint:
             return .purple
+        case .event:
+            return .orange
         case .question:
             return .blue
-        case .announcement:
-            return .orange
         case .arChallenge:
             return .green
         }

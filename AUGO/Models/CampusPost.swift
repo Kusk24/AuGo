@@ -33,6 +33,7 @@ struct CampusPost: Identifiable {
     let coordinate: CLLocationCoordinate2D
     let category: PostCategory
     let createdAt: Date
+    let emojiPin: String?
 }
 
 // MARK: - Equatable (manual)

@@ -20,8 +20,12 @@ struct CreatePostView: View {
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var selectedPhoto: UIImage?
     @State private var isLoadingPhotos = false
+    @State private var enableEmojiPin = false
+    @State private var selectedEmojiPin: String?
     
     @StateObject private var locationManager = LocationManager()
+    
+    private let postEmojis = ["😀", "🔥", "🎉", "❓", "⚠️", "📦", "🙏", "💬", "😢", "🆘"]
 
     // Real-time content filtering
     private var contentFilterResult: (contains: Bool, detectedWords: [String]) {
@@ -35,6 +39,7 @@ struct CreatePostView: View {
     private var canPost: Bool {
         !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         && selectedCategory != nil
+        && (!enableEmojiPin || selectedEmojiPin != nil)
         && !hasInappropriateContent
     }
     
@@ -59,6 +64,14 @@ struct CreatePostView: View {
     
     private var freePostLimit: Int {
         postManager.userEconomy?.dailyFreePostLimit ?? 0
+    }
+    
+    private var emojiPinPrice: Double {
+        postManager.userEconomy?.emojiPinPrice ?? 0
+    }
+    
+    private var categoryOptions: [Post.PostCategory] {
+        [.casual, .lostFound, .complaint, .event, .question, .arChallenge]
     }
 
     var body: some View {
@@ -87,7 +100,7 @@ struct CreatePostView: View {
                         Spacer()
 
                         Menu {
-                            ForEach(Post.PostCategory.allCases) { category in
+                            ForEach(categoryOptions) { category in
                                 Button(category.rawValue) {
                                     selectedCategory = category
                                 }
@@ -219,6 +232,56 @@ struct CreatePostView: View {
                             .padding(.vertical, 4)
                         }
                     }
+                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Toggle(isOn: $enableEmojiPin) {
+                                Text("Post with emoji")
+                                    .font(.subheadline.weight(.semibold))
+                            }
+                            .tint(Color.Brand.primary)
+
+                            Spacer()
+                            Label("\(coinsText(emojiPinPrice))", systemImage: "bitcoinsign.circle.fill")
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(.orange)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color.orange.opacity(0.12))
+                                .clipShape(Capsule())
+                        }
+
+                        if enableEmojiPin {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(postEmojis, id: \.self) { emoji in
+                                        Button {
+                                            selectedEmojiPin = emoji
+                                        } label: {
+                                            Text(emoji)
+                                                .font(.system(size: 24))
+                                                .frame(width: 44, height: 44)
+                                                .background((selectedEmojiPin == emoji ? Color.Brand.primary.opacity(0.22) : Color(UIColor.systemGray6)))
+                                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                                .padding(.vertical, 2)
+                            }
+                            Text("Emoji pins are shown on map instead of SF symbols.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .onChange(of: enableEmojiPin) { _, enabled in
+                        if enabled, selectedEmojiPin == nil {
+                            selectedEmojiPin = postEmojis.first
+                        }
+                        if !enabled {
+                            selectedEmojiPin = nil
+                        }
+                    }
                 }
                 .padding()
                 .background(
@@ -321,7 +384,8 @@ struct CreatePostView: View {
                 category: selectedCategory ?? .casual,
                 userId: userId,
                 coordinate: coordinate,
-                photoData: photoData
+                photoData: photoData,
+                emojiPin: enableEmojiPin ? selectedEmojiPin : nil
             )
             
             print("✅ Post created with ID: \(postId) at location: \(coordinate.latitude), \(coordinate.longitude)")

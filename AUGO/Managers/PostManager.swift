@@ -16,11 +16,13 @@ class PostManager: ObservableObject {
         let dailyFreePostLimit: Int
         let dailyFreeCoin: Double
         let postVisibilityDurationHours: Int
+        let emojiPinPrice: Double
         
         static let `default` = AdminConfiguration(
             dailyFreePostLimit: 3,
             dailyFreeCoin: 10.0,
-            postVisibilityDurationHours: 24
+            postVisibilityDurationHours: 24,
+            emojiPinPrice: 5.0
         )
     }
     
@@ -31,6 +33,7 @@ class PostManager: ObservableObject {
         let freePostsLeft: Int
         let dailyCoinReward: Double
         let canClaimDailyCoin: Bool
+        let emojiPinPrice: Double
     }
     
     enum PostCreationError: LocalizedError {
@@ -121,10 +124,11 @@ class PostManager: ObservableObject {
             adminConfigCache = AdminConfiguration(
                 dailyFreePostLimit: max(0, intValue(data["dailyFreePostLimit"], default: AdminConfiguration.default.dailyFreePostLimit)),
                 dailyFreeCoin: max(0, doubleValue(data["dailyFreeCoin"], default: AdminConfiguration.default.dailyFreeCoin)),
-                postVisibilityDurationHours: max(1, intValue(data["postVisibilityDuration"], default: AdminConfiguration.default.postVisibilityDurationHours))
+                postVisibilityDurationHours: max(1, intValue(data["postVisibilityDuration"], default: AdminConfiguration.default.postVisibilityDurationHours)),
+                emojiPinPrice: max(0, doubleValue(data["emojiPinPrice"], default: AdminConfiguration.default.emojiPinPrice))
             )
             lastAdminConfigFetch = Date()
-            print("✅ Admin config loaded: dailyFreeCoin=\(adminConfigCache.dailyFreeCoin), dailyFreePostLimit=\(adminConfigCache.dailyFreePostLimit), postVisibilityDurationHours=\(adminConfigCache.postVisibilityDurationHours)")
+            print("✅ Admin config loaded: dailyFreeCoin=\(adminConfigCache.dailyFreeCoin), dailyFreePostLimit=\(adminConfigCache.dailyFreePostLimit), postVisibilityDurationHours=\(adminConfigCache.postVisibilityDurationHours), emojiPinPrice=\(adminConfigCache.emojiPinPrice)")
             return adminConfigCache
         } catch {
             print("⚠️ Failed to load admin configuration. Using defaults: \(error.localizedDescription)")
@@ -200,7 +204,8 @@ class PostManager: ObservableObject {
                 dailyFreePostLimit: config.dailyFreePostLimit,
                 freePostsLeft: freePostsLeft,
                 dailyCoinReward: config.dailyFreeCoin,
-                canClaimDailyCoin: canClaimDailyCoin
+                canClaimDailyCoin: canClaimDailyCoin,
+                emojiPinPrice: config.emojiPinPrice
             )
         } catch {
             print("❌ Failed to refresh user economy: \(error.localizedDescription)")
@@ -249,10 +254,11 @@ class PostManager: ObservableObject {
     }
     
     // MARK: - Create Post
-    func createPost(content: String, category: Post.PostCategory, userId: String, coordinate: CLLocationCoordinate2D, photoData: Data? = nil) async throws -> String {
+    func createPost(content: String, category: Post.PostCategory, userId: String, coordinate: CLLocationCoordinate2D, photoData: Data? = nil, emojiPin: String? = nil) async throws -> String {
         isLoading = true
         errorMessage = nil
         lastPostCreationMessage = nil
+        let userCategory = category
         
         do {
             let adminConfig = await loadAdminConfiguration()
@@ -263,6 +269,7 @@ class PostManager: ObservableObject {
                 value: adminConfig.postVisibilityDurationHours,
                 to: now
             ) ?? now
+            let normalizedEmojiPin = normalizedEmoji(emojiPin)
             
             let postRef = db.collection("posts").document()
             let userRef = db.collection("users").document(userId)
@@ -288,12 +295,14 @@ class PostManager: ObservableObject {
                 )
                 
                 let needsCoin = dailyPostCount >= adminConfig.dailyFreePostLimit
-                if needsCoin && coinBalance < 1 {
-                    errorPointer?.pointee = PostCreationError.insufficientCoins(required: 1.0, balance: coinBalance) as NSError
+                let emojiCost = normalizedEmojiPin == nil ? 0.0 : adminConfig.emojiPinPrice
+                let totalCoinCost = (needsCoin ? 1.0 : 0.0) + emojiCost
+                if coinBalance < totalCoinCost {
+                    errorPointer?.pointee = PostCreationError.insufficientCoins(required: totalCoinCost, balance: coinBalance) as NSError
                     return nil
                 }
                 
-                let spentCoin: Double = needsCoin ? 1.0 : 0.0
+                let spentCoin = totalCoinCost
                 coinBalance -= spentCoin
                 dailyPostCount += 1
                 
@@ -309,17 +318,18 @@ class PostManager: ObservableObject {
                     userId: userId,
                     date: now,
                     content: content,
-                    category: category,
+                    category: userCategory,
                     latitude: coordinate.latitude,
                     longitude: coordinate.longitude,
                     likeCount: 0,
                     dislikeCount: 0,
                     reportCount: 0,
                     status: .active,
-                    photoPaths: []
+                    photoPaths: [],
+                    emojiPin: normalizedEmojiPin
                 )
-                
-                transaction.setData([
+
+                var postPayload: [String: Any] = [
                     "userId": post.userId,
                     "date": post.date,
                     "expiresAt": Timestamp(date: expiresAt),
@@ -333,10 +343,14 @@ class PostManager: ObservableObject {
                     "status": post.status.rawValue,
                     "coinSpent": spentCoin,
                     "photoPaths": []
-                ], forDocument: postRef)
+                ]
+                if let emojiPin = post.emojiPin, !emojiPin.isEmpty {
+                    postPayload["emojiPin"] = emojiPin
+                }
+                transaction.setData(postPayload, forDocument: postRef)
                 
                 if spentCoin > 0 {
-                    transactionMessage = "Post created. -1.0 coin (Balance: \(Self.formatCoins(coinBalance)))."
+                    transactionMessage = "Post created. -\(Self.formatCoins(spentCoin)) coin(s) (Balance: \(Self.formatCoins(coinBalance)))."
                 } else {
                     let freeUsed = min(dailyPostCount, adminConfig.dailyFreePostLimit)
                     transactionMessage = "Post created. Free posts today: \(freeUsed)/\(adminConfig.dailyFreePostLimit)."
@@ -899,12 +913,16 @@ class PostManager: ObservableObject {
         switch normalizedKey {
         case "casual":
             categoryRaw = Post.PostCategory.casual.rawValue
+        case "lost & found", "lost and found", "lostfound":
+            categoryRaw = Post.PostCategory.lostFound.rawValue
+        case "complaint", "complaints":
+            categoryRaw = Post.PostCategory.complaint.rawValue
         case "event":
             categoryRaw = Post.PostCategory.event.rawValue
         case "question":
             categoryRaw = Post.PostCategory.question.rawValue
         case "announcement":
-            categoryRaw = Post.PostCategory.announcement.rawValue
+            categoryRaw = Post.PostCategory.casual.rawValue
         case "ar challenge", "archallenge":
             categoryRaw = Post.PostCategory.arChallenge.rawValue
         default:
@@ -927,7 +945,8 @@ class PostManager: ObservableObject {
                 dislikeCount: data["dislikeCount"] as? Int ?? 0,
                 reportCount: data["reportCount"] as? Int ?? 0,
                 status: Post.PostStatus(rawValue: data["status"] as? String ?? "active") ?? .active,
-                photoPaths: data["photoPaths"] as? [String] ?? []
+                photoPaths: data["photoPaths"] as? [String] ?? [],
+                emojiPin: data["emojiPin"] as? String
             )
             return post
         }
@@ -955,10 +974,17 @@ class PostManager: ObservableObject {
             dislikeCount: data["dislikeCount"] as? Int ?? 0,
             reportCount: data["reportCount"] as? Int ?? 0,
             status: Post.PostStatus(rawValue: data["status"] as? String ?? "active") ?? .active,
-            photoPaths: data["photoPaths"] as? [String] ?? []
+            photoPaths: data["photoPaths"] as? [String] ?? [],
+            emojiPin: data["emojiPin"] as? String
         )
 
         return post
+    }
+
+    private func normalizedEmoji(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else { return nil }
+        return String(trimmed.prefix(2))
     }
 
     private func uploadPostPhoto(postId: String, userId: String, photoData: Data) async throws -> String {

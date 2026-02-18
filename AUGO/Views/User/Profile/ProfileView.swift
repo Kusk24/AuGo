@@ -462,17 +462,9 @@ private struct TodayPostCard: View {
             return
         }
 
-        if raw.hasPrefix("https://") || raw.hasPrefix("http://") {
-            await MainActor.run {
-                resolvedPhotoURL = URL(string: raw)
-                isLoadingPhoto = false
-            }
-            return
-        }
-
         await MainActor.run { isLoadingPhoto = true }
 
-        if let objectPath = normalizedStorageObjectPath(raw) {
+        for objectPath in storageObjectPathCandidates(from: raw) {
             do {
                 let url = try await Storage.storage().reference(withPath: objectPath).downloadURL()
                 await MainActor.run {
@@ -485,8 +477,12 @@ private struct TodayPostCard: View {
             }
         }
 
+        let fallbackURL = URL(string: raw)
+            ?? storageMediaURL(forObjectPath: storageObjectPathCandidates(from: raw).first ?? "")
+            ?? firebaseMediaURL(from: raw)
+
         await MainActor.run {
-            resolvedPhotoURL = firebaseMediaURL(from: raw)
+            resolvedPhotoURL = fallbackURL
             isLoadingPhoto = false
         }
     }
@@ -509,6 +505,21 @@ private struct TodayPostCard: View {
                     Capsule()
                         .fill(categoryColor.opacity(0.14))
                 )
+
+                if let emoji = post.emojiPin?.trimmingCharacters(in: .whitespacesAndNewlines), !emoji.isEmpty {
+                    HStack(spacing: 4) {
+                        Text(emoji)
+                        Text("Special")
+                            .font(.caption2.weight(.bold))
+                    }
+                    .foregroundColor(.pink)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(
+                        Capsule()
+                            .fill(Color.pink.opacity(0.14))
+                    )
+                }
                 
                 Spacer()
                 
@@ -613,12 +624,14 @@ private struct TodayPostCard: View {
         switch post.category {
         case .casual:
             return .yellow
+        case .lostFound:
+            return .teal
+        case .complaint:
+            return .purple
         case .event:
             return .orange
         case .question:
             return .blue
-        case .announcement:
-            return .purple
         case .arChallenge:
             return .green
         }
@@ -651,17 +664,9 @@ private struct CapturedCharacterCard: View {
             return
         }
 
-        if raw.hasPrefix("https://") || raw.hasPrefix("http://") {
-            await MainActor.run {
-                resolvedPreviewURL = URL(string: raw)
-                isLoadingPreview = false
-            }
-            return
-        }
-
         await MainActor.run { isLoadingPreview = true }
 
-        if let objectPath = normalizedStorageObjectPath(raw) {
+        for objectPath in storageObjectPathCandidates(from: raw) {
             do {
                 let url = try await Storage.storage().reference(withPath: objectPath).downloadURL()
                 await MainActor.run {
@@ -674,8 +679,12 @@ private struct CapturedCharacterCard: View {
             }
         }
 
+        let fallbackURL = URL(string: raw)
+            ?? storageMediaURL(forObjectPath: storageObjectPathCandidates(from: raw).first ?? "")
+            ?? firebaseMediaURL(from: raw)
+
         await MainActor.run {
-            resolvedPreviewURL = firebaseMediaURL(from: raw)
+            resolvedPreviewURL = fallbackURL
             isLoadingPreview = false
         }
     }
@@ -829,4 +838,49 @@ private func normalizedStorageObjectPath(_ rawValue: String?) -> String? {
         value.removeFirst()
     }
     return value.isEmpty ? nil : value
+}
+
+private func storageObjectPathCandidates(from rawValue: String) -> [String] {
+    let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return [] }
+
+    var candidates: [String] = []
+
+    if let normalized = normalizedStorageObjectPath(trimmed) {
+        candidates.append(normalized)
+    }
+
+    if (trimmed.hasPrefix("https://") || trimmed.hasPrefix("http://")),
+       let components = URLComponents(string: trimmed),
+       let range = components.path.range(of: "/o/") {
+        let encodedObject = String(components.path[range.upperBound...])
+        let decoded = encodedObject.removingPercentEncoding ?? encodedObject
+        if let normalized = normalizedStorageObjectPath(decoded) {
+            candidates.append(normalized)
+        }
+    }
+
+    if let decoded = trimmed.removingPercentEncoding,
+       decoded != trimmed,
+       let normalized = normalizedStorageObjectPath(decoded) {
+        candidates.append(normalized)
+    }
+
+    var unique: [String] = []
+    for candidate in candidates where !candidate.isEmpty {
+        if !unique.contains(candidate) {
+            unique.append(candidate)
+        }
+    }
+    return unique
+}
+
+private func storageMediaURL(forObjectPath objectPath: String) -> URL? {
+    guard !objectPath.isEmpty else { return nil }
+    guard let app = FirebaseApp.app(), let bucket = app.options.storageBucket else { return nil }
+    let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+    guard let escapedPath = objectPath.addingPercentEncoding(withAllowedCharacters: allowed) else {
+        return nil
+    }
+    return URL(string: "https://firebasestorage.googleapis.com/v0/b/\(bucket)/o/\(escapedPath)?alt=media")
 }
