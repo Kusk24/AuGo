@@ -25,6 +25,8 @@ struct CreateAnnouncementView: View {
     @State private var selectedPhotos: [UIImage] = []
     @State private var existingPhotoPaths: [String] = []
     @State private var isLoadingPhotos = false
+    @State private var showFilterAlert = false
+    @State private var filterAlertMessage = ""
 
     init(
         isPresentedFromHome: Binding<Bool>,
@@ -50,6 +52,11 @@ struct CreateAnnouncementView: View {
         && startDate <= endDate
         && coinRewardValue >= 0
         && !isLoadingPhotos
+        && !contentFilterResult.contains
+    }
+
+    private var contentFilterResult: (contains: Bool, detectedWords: [String]) {
+        ContentFilter.containsInappropriateContent("\(title)\n\(content)\n\(link)")
     }
 
     private var coinRewardValue: Double {
@@ -69,6 +76,12 @@ struct CreateAnnouncementView: View {
                     TextField("Title", text: $title)
                     TextEditor(text: $content)
                         .frame(minHeight: 120)
+
+                    if contentFilterResult.contains {
+                        Text(ContentFilter.getValidationMessage(for: contentFilterResult.detectedWords))
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
                 }
                 
                 Section("Details") {
@@ -183,7 +196,12 @@ struct CreateAnnouncementView: View {
             }
             
             Button {
-                navigateToMap = true
+                if contentFilterResult.contains {
+                    filterAlertMessage = ContentFilter.getValidationMessage(for: contentFilterResult.detectedWords)
+                    showFilterAlert = true
+                } else {
+                    navigateToMap = true
+                }
             } label: {
                 Text(isLoadingPhotos
                      ? "Loading photos..."
@@ -214,6 +232,11 @@ struct CreateAnnouncementView: View {
         }
         .onChange(of: selectedPhotoItems) { _, newItems in
             Task { await loadSelectedPhotos(from: newItems) }
+        }
+        .alert("Content Warning", isPresented: $showFilterAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(filterAlertMessage)
         }
     }
 

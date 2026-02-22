@@ -3,21 +3,51 @@ import Foundation
 
 struct ContentFilter {
     
-    // MARK: - Bad Words List
-    private static let badWords: Set<String> = [
-        // Profanity
-        "fuck", "shit", "damn", "hell", "ass", "bitch", "bastard",
-        "crap", "piss", "dick", "cock", "pussy", "slut", "whore",
-        
-        // Offensive/Hateful
-        "stupid", "idiot", "dumb", "moron", "retard", "fag", "faggot",
-        "nigger", "nigga", "chink", "spic", "kike", "wetback",
-        
-        // Violence/Threats
-        "kill", "murder", "die", "dead", "suicide", "rape",
-        
-        // Add more words as needed
-        // You can expand this list based on your community guidelines
+    // MARK: - Word/Phrase Lists
+    // Keep this list focused on severe profanity, hate slurs, and violent/sexual abuse terms.
+    private static let blockedWords: Set<String> = [
+        // Strong profanity / sexual profanity
+        "fuck", "fucker", "fucking", "motherfucker",
+        "shit", "bullshit", "dick", "cock", "pussy", "cunt",
+        "bitch", "bastard", "slut", "whore", "twat",
+        "wanker", "prick", "asshole", "jackass", "dumbass",
+
+        // Self-harm / violence / abuse
+        "rape", "rapist", "kill", "killing", "murder", "suicide",
+        "selfharm", "self-harm", "lynch",
+
+        // Hate slurs / severe identity-based abuse
+        "nigger", "nigga", "faggot", "fag", "dyke", "tranny",
+        "chink", "gook", "spic", "kike", "wetback", "paki",
+        "raghead", "sandnigger", "coon", "jap"
+    ]
+
+    // Phrase patterns that are commonly used for hateful targeting.
+    private static let blockedPhrases: [String] = [
+        "go back to your country",
+        "go back to where you came from",
+        "dirty immigrant",
+        "white power",
+        "heil hitler",
+        "gas the",
+        "kill yourself"
+    ]
+
+    private static let leetMap: [Character: Character] = [
+        "0": "o",
+        "1": "i",
+        "2": "z",
+        "3": "e",
+        "4": "a",
+        "5": "s",
+        "6": "g",
+        "7": "t",
+        "8": "b",
+        "9": "g",
+        "@": "a",
+        "$": "s",
+        "!": "i",
+        "+": "t"
     ]
     
     // MARK: - Filter Method
@@ -25,26 +55,38 @@ struct ContentFilter {
     /// - Parameter content: The text to check
     /// - Returns: Tuple with (containsBadWords, detectedWords)
     static func containsInappropriateContent(_ content: String) -> (contains: Bool, detectedWords: [String]) {
-        let normalizedContent = content.lowercased()
+        let normalized = normalizeForMatching(content)
+        let tokens = Set(normalized.split(separator: " ").map(String.init))
+        let compact = normalized.replacingOccurrences(of: " ", with: "")
+
         var detectedWords: [String] = []
-        
-        // Use word boundary matching to avoid false positives (e.g., "hello" containing "hell")
-        for badWord in badWords {
-            // Create regex pattern with word boundaries
-            // \b ensures the word is standalone (not part of another word)
-            let pattern = "\\b\(NSRegularExpression.escapedPattern(for: badWord))\\b"
-            
-            if let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) {
-                let range = NSRange(normalizedContent.startIndex..., in: normalizedContent)
-                let matches = regex.matches(in: normalizedContent, range: range)
-                
-                if !matches.isEmpty && !detectedWords.contains(badWord) {
-                    detectedWords.append(badWord)
-                }
+
+        for blocked in blockedWords {
+            let normalizedBlocked = normalizeForMatching(blocked).replacingOccurrences(of: " ", with: "")
+            guard !normalizedBlocked.isEmpty else { continue }
+
+            if tokens.contains(normalizedBlocked) {
+                detectedWords.append(blocked)
+                continue
+            }
+
+            // Catch obfuscated variants like "f.u.c.k", "fuuuck", "n1gg3r", etc.
+            if normalizedBlocked.count >= 4 && compact.contains(normalizedBlocked) {
+                detectedWords.append(blocked)
+                continue
             }
         }
-        
-        return (contains: !detectedWords.isEmpty, detectedWords: detectedWords)
+
+        for phrase in blockedPhrases {
+            let normalizedPhrase = normalizeForMatching(phrase)
+            if !normalizedPhrase.isEmpty && normalized.contains(normalizedPhrase) {
+                detectedWords.append(phrase)
+            }
+        }
+
+        // Keep output deterministic and compact.
+        let uniqueDetected = Array(Set(detectedWords)).sorted()
+        return (contains: !uniqueDetected.isEmpty, detectedWords: uniqueDetected)
     }
     
     // MARK: - Censored Version
@@ -53,16 +95,18 @@ struct ContentFilter {
     /// - Returns: Censored text
     static func censorContent(_ content: String) -> String {
         var censoredContent = content
-        
-        for badWord in badWords {
-            let pattern = "\\b\(badWord)\\b"
+
+        let allTerms = blockedWords.union(blockedPhrases)
+        for term in allTerms {
+            let escaped = NSRegularExpression.escapedPattern(for: term)
+            let pattern = "\\b\(escaped)\\b"
             let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
             let range = NSRange(censoredContent.startIndex..., in: censoredContent)
-            
+
             if let matches = regex?.matches(in: censoredContent, range: range) {
                 for match in matches.reversed() {
                     if let range = Range(match.range, in: censoredContent) {
-                        let replacement = String(repeating: "*", count: badWord.count)
+                        let replacement = String(repeating: "*", count: term.count)
                         censoredContent.replaceSubrange(range, with: replacement)
                     }
                 }
@@ -84,5 +128,35 @@ struct ContentFilter {
         } else {
             return "Your post contains \(detectedWords.count) inappropriate words. Please review and edit your message."
         }
+    }
+
+    // MARK: - Normalization
+    private static func normalizeForMatching(_ input: String) -> String {
+        let lowered = input
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .lowercased()
+
+        var normalizedChars: [Character] = []
+        var previous: Character?
+
+        for ch in lowered {
+            let mapped = leetMap[ch] ?? ch
+            let isLetterOrNumber = mapped.isLetter || mapped.isNumber
+            let normalizedChar: Character = isLetterOrNumber ? mapped : " "
+
+            // Compress repeated letters to reduce "fuuuuuck" and similar obfuscation.
+            if normalizedChar == previous, normalizedChar != " " {
+                continue
+            }
+
+            normalizedChars.append(normalizedChar)
+            previous = normalizedChar
+        }
+
+        let compacted = String(normalizedChars)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return compacted
     }
 }
