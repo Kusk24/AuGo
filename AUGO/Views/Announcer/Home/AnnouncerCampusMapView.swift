@@ -18,7 +18,7 @@ struct AnnouncerCampusMapView: View {
     
     var body: some View {
         ZStack {
-            Color.Brand.primary.opacity(0.06)
+            Color.Brand.appBackground
                 .ignoresSafeArea()
             
             RoundedRectangle(cornerRadius: 24)

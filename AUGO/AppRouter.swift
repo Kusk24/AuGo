@@ -54,7 +54,7 @@ final class AppRouter: ObservableObject {
 struct LoadingView: View {
     var body: some View {
         ZStack {
-            Color.Brand.primary.opacity(0.06)
+            Color.Brand.appBackground
                 .ignoresSafeArea()
             
             VStack(spacing: 16) {

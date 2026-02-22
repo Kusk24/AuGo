@@ -8,6 +8,7 @@ struct ProfileView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @EnvironmentObject var postManager: PostManager
     @EnvironmentObject var notificationManager: NotificationManager
+    @EnvironmentObject var themeManager: AppThemeManager
 
     @State private var showLogoutAlert = false
     @State private var userRank: Int = 0
@@ -72,7 +73,7 @@ struct ProfileView: View {
 
     var body: some View {
         ZStack {
-            Color.Brand.primary.opacity(0.06)
+            Color.Brand.appBackground
                 .ignoresSafeArea()
 
             ScrollView {
@@ -274,7 +275,36 @@ struct ProfileView: View {
                         .padding(.vertical, 12)
                         .background(
                             RoundedRectangle(cornerRadius: 12)
-                                .fill(Color(UIColor.systemGray6))
+                                .fill(Color.Brand.surfaceMuted)
+                        )
+
+                        Button {
+                            themeManager.toggleNightMode()
+                        } label: {
+                            HStack {
+                                Label(
+                                    themeManager.isNightModeEnabled ? "Night Theme: On" : "Night Theme: Off",
+                                    systemImage: themeManager.isNightModeEnabled ? "moon.stars.fill" : "sun.max.fill"
+                                )
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(.primary)
+
+                                Spacer()
+
+                                Text("Switch")
+                                    .font(.caption.weight(.bold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(Color.Brand.primary.opacity(0.15))
+                                    .foregroundColor(Color.Brand.primary)
+                                    .clipShape(Capsule())
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color.Brand.surfaceMuted)
                         )
                     }
                     .padding(.horizontal, 16)
@@ -424,7 +454,7 @@ private struct EconomyInfoCard: View {
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(Color.white)
+                .fill(Color.Brand.surface)
                 .shadow(color: .black.opacity(0.04), radius: 3, y: 2)
         )
     }
@@ -435,6 +465,8 @@ private struct TodayPostCard: View {
     let onDelete: () -> Void
     @State private var resolvedPhotoURL: URL?
     @State private var isLoadingPhoto = false
+    @State private var photoRetryCount = 0
+    @State private var isPhotoRetryScheduled = false
     
     private var timeAgo: String {
         let interval = Date().timeIntervalSince(post.date)
@@ -463,11 +495,31 @@ private struct TodayPostCard: View {
         }
 
         await MainActor.run { isLoadingPhoto = true }
-        let fallbackURL = await StorageURLResolver.shared.resolveURL(from: raw)
+        let resolvedURL = await StorageURLResolver.shared.resolveURL(from: raw)
 
         await MainActor.run {
-            resolvedPhotoURL = fallbackURL
+            resolvedPhotoURL = resolvedURL.map { cacheBustedURL($0, nonce: photoRetryCount) }
             isLoadingPhoto = false
+        }
+    }
+
+    private func schedulePhotoRetry() {
+        guard !isLoadingPhoto,
+              !isPhotoRetryScheduled,
+              photoRetryCount < 3,
+              let raw = firstPhotoRawPath?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else { return }
+
+        isPhotoRetryScheduled = true
+        photoRetryCount += 1
+        resolvedPhotoURL = nil
+
+        Task {
+            await StorageURLResolver.shared.invalidateCache(for: raw)
+            let delay = UInt64(300_000_000 * max(1, photoRetryCount))
+            try? await Task.sleep(nanoseconds: delay)
+            await loadPhotoURL()
+            await MainActor.run { isPhotoRetryScheduled = false }
         }
     }
     
@@ -520,7 +572,7 @@ private struct TodayPostCard: View {
                     case .empty:
                         ZStack {
                             RoundedRectangle(cornerRadius: 10)
-                                .fill(Color(UIColor.systemGray5))
+                                .fill(Color.Brand.surfaceMuted)
                             ProgressView()
                         }
                     case .success(let image):
@@ -530,10 +582,11 @@ private struct TodayPostCard: View {
                     case .failure:
                         ZStack {
                             RoundedRectangle(cornerRadius: 10)
-                                .fill(Color(UIColor.systemGray5))
+                                .fill(Color.Brand.surfaceMuted)
                             Image(systemName: "photo")
                                 .foregroundColor(.secondary)
                         }
+                        .onAppear { schedulePhotoRetry() }
                     @unknown default:
                         EmptyView()
                     }
@@ -544,7 +597,7 @@ private struct TodayPostCard: View {
             } else if isLoadingPhoto {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(Color(UIColor.systemGray5))
+                        .fill(Color.Brand.surfaceMuted)
                     ProgressView()
                 }
                 .frame(maxWidth: .infinity)
@@ -565,7 +618,7 @@ private struct TodayPostCard: View {
                     .padding(.vertical, 6)
                     .background(
                         RoundedRectangle(cornerRadius: 8)
-                            .fill(Color(UIColor.systemGray6))
+                            .fill(Color.Brand.surfaceMuted)
                     )
                 
                 Spacer()
@@ -592,14 +645,16 @@ private struct TodayPostCard: View {
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 14)
-                .fill(Color.white)
+                .fill(Color.Brand.surface)
                 .overlay(
                     RoundedRectangle(cornerRadius: 14)
-                        .stroke(Color(UIColor.systemGray5), lineWidth: 1)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
                 )
                 .shadow(color: .black.opacity(0.06), radius: 4, y: 3)
         )
         .task(id: firstPhotoRawPath ?? "") {
+            photoRetryCount = 0
+            isPhotoRetryScheduled = false
             await loadPhotoURL()
         }
     }
@@ -626,6 +681,8 @@ private struct CapturedCharacterCard: View {
     let capture: ARCapturedCharacter
     @State private var resolvedPreviewURL: URL?
     @State private var isLoadingPreview = false
+    @State private var previewRetryCount = 0
+    @State private var isPreviewRetryScheduled = false
 
     private var previewURL: URL? { resolvedPreviewURL }
 
@@ -649,11 +706,31 @@ private struct CapturedCharacterCard: View {
         }
 
         await MainActor.run { isLoadingPreview = true }
-        let fallbackURL = await StorageURLResolver.shared.resolveURL(from: raw)
+        let resolvedURL = await StorageURLResolver.shared.resolveURL(from: raw)
 
         await MainActor.run {
-            resolvedPreviewURL = fallbackURL
+            resolvedPreviewURL = resolvedURL.map { cacheBustedURL($0, nonce: previewRetryCount) }
             isLoadingPreview = false
+        }
+    }
+
+    private func schedulePreviewRetry() {
+        guard !isLoadingPreview,
+              !isPreviewRetryScheduled,
+              previewRetryCount < 3,
+              let raw = resolvedPreviewPath?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else { return }
+
+        isPreviewRetryScheduled = true
+        previewRetryCount += 1
+        resolvedPreviewURL = nil
+
+        Task {
+            await StorageURLResolver.shared.invalidateCache(for: raw)
+            let delay = UInt64(300_000_000 * max(1, previewRetryCount))
+            try? await Task.sleep(nanoseconds: delay)
+            await loadPreviewURL()
+            await MainActor.run { isPreviewRetryScheduled = false }
         }
     }
 
@@ -698,6 +775,7 @@ private struct CapturedCharacterCard: View {
                                 .padding(10)
                         case .failure:
                             placeholderView
+                                .onAppear { schedulePreviewRetry() }
                         @unknown default:
                             placeholderView
                         }
@@ -710,6 +788,8 @@ private struct CapturedCharacterCard: View {
             }
             .frame(height: 156)
             .task(id: resolvedPreviewPath ?? "") {
+                previewRetryCount = 0
+                isPreviewRetryScheduled = false
                 await loadPreviewURL()
             }
 
@@ -734,10 +814,10 @@ private struct CapturedCharacterCard: View {
         .frame(width: 180, height: 332, alignment: .top)
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(Color.white)
+                .fill(Color.Brand.surface)
                 .overlay(
                     RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color(UIColor.systemGray5), lineWidth: 1)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
                 )
         )
         .shadow(color: .black.opacity(0.05), radius: 4, y: 2)
@@ -858,6 +938,15 @@ private actor StorageURLResolver {
 
     private var resolvedCache: [String: URL] = [:]
 
+    func invalidateCache(for rawValue: String) {
+        let raw = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return }
+        resolvedCache.removeValue(forKey: raw)
+        for key in objectPathCandidates(from: raw) {
+            resolvedCache.removeValue(forKey: key)
+        }
+    }
+
     func resolveURL(from rawValue: String) async -> URL? {
         let raw = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else { return nil }
@@ -874,7 +963,8 @@ private actor StorageURLResolver {
             return direct
         }
 
-        for objectPath in storageObjectPathCandidates(from: raw) where !objectPath.isEmpty {
+        let objectPaths = objectPathCandidates(from: raw)
+        for objectPath in objectPaths where !objectPath.isEmpty {
             if let cached = resolvedCache[objectPath] {
                 resolvedCache[raw] = cached
                 return cached
@@ -890,8 +980,13 @@ private actor StorageURLResolver {
             }
         }
 
-        let fallback = firebaseMediaURL(from: raw)
-            ?? storageMediaURL(forObjectPath: storageObjectPathCandidates(from: raw).first ?? "")
+        // For private Storage files, unsigned media URLs frequently fail.
+        // If we had an object path but couldn't get a signed URL, return nil and retry.
+        if !objectPaths.isEmpty {
+            return nil
+        }
+
+        let fallback = mediaURL(fromRaw: raw)
 
         if let fallback {
             resolvedCache[raw] = fallback
@@ -909,4 +1004,97 @@ private actor StorageURLResolver {
             return try await ref.downloadURL()
         }
     }
+
+    private func mediaURL(fromRaw rawValue: String) -> URL? {
+        let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return nil }
+
+        if value.hasPrefix("https://") || value.hasPrefix("http://") {
+            return URL(string: value)
+        }
+
+        let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+
+        if value.hasPrefix("gs://"),
+           let gsURL = URL(string: value),
+           let bucket = gsURL.host {
+            var objectPath = gsURL.path
+            while objectPath.hasPrefix("/") {
+                objectPath.removeFirst()
+            }
+            guard let escapedPath = objectPath.addingPercentEncoding(withAllowedCharacters: allowed) else {
+                return nil
+            }
+            return URL(string: "https://firebasestorage.googleapis.com/v0/b/\(bucket)/o/\(escapedPath)?alt=media")
+        }
+
+        guard let app = FirebaseApp.app(), let bucket = app.options.storageBucket else { return nil }
+        var objectPath = value
+        while objectPath.hasPrefix("/") {
+            objectPath.removeFirst()
+        }
+        guard let escapedPath = objectPath.addingPercentEncoding(withAllowedCharacters: allowed) else {
+            return nil
+        }
+        return URL(string: "https://firebasestorage.googleapis.com/v0/b/\(bucket)/o/\(escapedPath)?alt=media")
+    }
+
+    private func objectPathCandidates(from rawValue: String) -> [String] {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        var candidates: [String] = []
+
+        if let normalized = normalizedStorageObjectPath(trimmed) {
+            candidates.append(normalized)
+        }
+
+        if (trimmed.hasPrefix("https://") || trimmed.hasPrefix("http://")),
+           let components = URLComponents(string: trimmed),
+           let range = components.path.range(of: "/o/") {
+            let encodedObject = String(components.path[range.upperBound...])
+            let decoded = encodedObject.removingPercentEncoding ?? encodedObject
+            if let normalized = normalizedStorageObjectPath(decoded) {
+                candidates.append(normalized)
+            }
+        }
+
+        if let decoded = trimmed.removingPercentEncoding,
+           decoded != trimmed,
+           let normalized = normalizedStorageObjectPath(decoded) {
+            candidates.append(normalized)
+        }
+
+        var unique: [String] = []
+        for candidate in candidates where !candidate.isEmpty {
+            if !unique.contains(candidate) {
+                unique.append(candidate)
+            }
+        }
+        return unique
+    }
+
+    private func normalizedStorageObjectPath(_ rawValue: String?) -> String? {
+        guard var value = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return nil
+        }
+        if value.hasPrefix("gs://"), let gsURL = URL(string: value) {
+            value = gsURL.path
+        }
+        while value.hasPrefix("/") {
+            value.removeFirst()
+        }
+        return value.isEmpty ? nil : value
+    }
+
+}
+
+private func cacheBustedURL(_ url: URL, nonce: Int) -> URL {
+    guard nonce > 0 else { return url }
+    guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
+    var items = components.queryItems ?? []
+    items.removeAll(where: { $0.name == "cb" })
+    items.append(URLQueryItem(name: "cb", value: "\(nonce)"))
+    components.queryItems = items
+    return components.url ?? url
 }

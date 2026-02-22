@@ -8,7 +8,7 @@ struct NotificationListView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                Color.Brand.primary.opacity(0.06)
+                Color.Brand.appBackground
                     .ignoresSafeArea()
                 
                 if notificationManager.receivedNotifications.isEmpty {
@@ -100,7 +100,7 @@ struct NotificationCard: View {
         .padding()
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(Color.white)
+                .fill(Color.Brand.surface)
                 .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
         )
     }

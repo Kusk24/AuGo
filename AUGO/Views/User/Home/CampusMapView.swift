@@ -336,15 +336,30 @@ struct CampusMapView: View {
         VStack {
             HStack {
                 VStack(alignment: .leading, spacing: 8) {
-                    Picker("Post Mode", selection: $postDisplayMode) {
+                    HStack(spacing: 8) {
                         ForEach(PostDisplayMode.allCases) { mode in
-                            Text(mode.rawValue).tag(mode)
+                            Button {
+                                postDisplayMode = mode
+                            } label: {
+                                Text(mode.rawValue)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundColor(postDisplayMode == mode ? .white : .primary)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .fill(postDisplayMode == mode ? Color.Brand.primary : Color.Brand.surfaceMuted)
+                                    )
+                            }
                         }
                     }
-                    .pickerStyle(.segmented)
                     .frame(width: 220)
-                    .padding(6)
-                    .background(.white.opacity(0.95))
+                    .padding(8)
+                    .background(Color.Brand.surface.opacity(0.96))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    )
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .shadow(radius: 3)
 
@@ -373,8 +388,12 @@ struct CampusMapView: View {
                             .font(.title3)
                             .foregroundStyle(Color.Brand.primary)
                             .padding(10)
-                            .background(.white)
+                            .background(Color.Brand.surface)
                             .clipShape(Circle())
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                            )
                             .shadow(radius: 4)
                     }
                 }
@@ -483,13 +502,16 @@ struct CampusMapView: View {
                             )
                         
                         // Preview label
-                        Text(String(post.message.prefix(20)))
+                        Text({
+                            let trimmed = post.message.trimmingCharacters(in: .whitespacesAndNewlines)
+                            return trimmed.isEmpty ? "Post" : String(trimmed.prefix(20))
+                        }())
                             .font(.caption2)
                             .fontWeight(.medium)
                             .foregroundColor(.primary)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(Color.white)
+                            .background(Color.Brand.surface)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
                                     .stroke(visual.color.opacity(0.35), lineWidth: 1)
@@ -670,7 +692,7 @@ struct CampusMapView: View {
 
     var body: some View {
         ZStack {
-            Color.Brand.primary.opacity(0.06)
+            Color.Brand.appBackground
                 .ignoresSafeArea()
             VStack {
                 mainContent

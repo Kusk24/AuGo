@@ -182,10 +182,15 @@ struct AnnouncementPinView: View {
 
                 Text(announcement.department)
                     .font(.caption2.bold())
+                    .foregroundColor(.primary)
                     .lineLimit(1)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Color.white)
+                    .background(Color.Brand.surface)
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    )
                     .clipShape(Capsule())
             }
         }

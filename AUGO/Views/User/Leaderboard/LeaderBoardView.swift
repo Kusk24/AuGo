@@ -32,7 +32,7 @@ struct LeaderboardView: View {
 
     var body: some View {
         ZStack {
-            Color.Brand.primary.opacity(0.06)
+            Color.Brand.appBackground
                 .ignoresSafeArea()
 
             if isLoading {
@@ -109,6 +109,7 @@ struct LeaderboardView: View {
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
+                .background(Color.Brand.appBackground)
             }
         }
         .onAppear {
@@ -223,7 +224,11 @@ private struct TopLeaderCardView: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.white)
+                .fill(Color.Brand.surface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                )
                 .shadow(
                     color: .black.opacity(0.12),
                     radius: highlight ? 6 : 3,
@@ -244,7 +249,7 @@ private struct TopLeaderCardView: View {
 
                 Text("#\(leader.rank)")
                     .font(.subheadline.bold())
-                    .foregroundColor(.gray)
+                    .foregroundColor(.secondary)
 
                 Text(leader.displayName)
                     .font(.subheadline)
@@ -253,7 +258,7 @@ private struct TopLeaderCardView: View {
 
                 Text("Total Points: \(leader.totalPoints)")
                     .font(.caption2)
-                    .foregroundColor(.gray)
+                    .foregroundColor(.secondary)
                     .padding(.bottom, 12)
             }
         }
@@ -285,19 +290,24 @@ private struct LeaderRowView: View {
 
                 Text("Total Points: \(leader.totalPoints)")
                     .font(.caption)
-                    .foregroundColor(.gray)
+                    .foregroundColor(.secondary)
             }
 
             Spacer()
 
             Text("#\(leader.rank)")
                 .font(.subheadline.bold())
-                .foregroundColor(.black)
+                .foregroundColor(.primary)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(
-            RoundedRectangle(cornerRadius: 18).fill(.white)
+            RoundedRectangle(cornerRadius: 18)
+                .fill(Color.Brand.surface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                )
         )
         .padding(.vertical, 4)
     }
