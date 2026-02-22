@@ -463,23 +463,7 @@ private struct TodayPostCard: View {
         }
 
         await MainActor.run { isLoadingPhoto = true }
-
-        for objectPath in storageObjectPathCandidates(from: raw) {
-            do {
-                let url = try await Storage.storage().reference(withPath: objectPath).downloadURL()
-                await MainActor.run {
-                    resolvedPhotoURL = url
-                    isLoadingPhoto = false
-                }
-                return
-            } catch {
-                print("⚠️ Failed to resolve post photo via Storage SDK for \(post.id ?? "unknown-post"): \(error.localizedDescription)")
-            }
-        }
-
-        let fallbackURL = URL(string: raw)
-            ?? storageMediaURL(forObjectPath: storageObjectPathCandidates(from: raw).first ?? "")
-            ?? firebaseMediaURL(from: raw)
+        let fallbackURL = await StorageURLResolver.shared.resolveURL(from: raw)
 
         await MainActor.run {
             resolvedPhotoURL = fallbackURL
@@ -665,23 +649,7 @@ private struct CapturedCharacterCard: View {
         }
 
         await MainActor.run { isLoadingPreview = true }
-
-        for objectPath in storageObjectPathCandidates(from: raw) {
-            do {
-                let url = try await Storage.storage().reference(withPath: objectPath).downloadURL()
-                await MainActor.run {
-                    resolvedPreviewURL = url
-                    isLoadingPreview = false
-                }
-                return
-            } catch {
-                print("⚠️ Failed to resolve captured preview via Storage SDK for \(capture.spawnId): \(error.localizedDescription)")
-            }
-        }
-
-        let fallbackURL = URL(string: raw)
-            ?? storageMediaURL(forObjectPath: storageObjectPathCandidates(from: raw).first ?? "")
-            ?? firebaseMediaURL(from: raw)
+        let fallbackURL = await StorageURLResolver.shared.resolveURL(from: raw)
 
         await MainActor.run {
             resolvedPreviewURL = fallbackURL
@@ -883,4 +851,62 @@ private func storageMediaURL(forObjectPath objectPath: String) -> URL? {
         return nil
     }
     return URL(string: "https://firebasestorage.googleapis.com/v0/b/\(bucket)/o/\(escapedPath)?alt=media")
+}
+
+private actor StorageURLResolver {
+    static let shared = StorageURLResolver()
+
+    private var resolvedCache: [String: URL] = [:]
+
+    func resolveURL(from rawValue: String) async -> URL? {
+        let raw = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return nil }
+
+        if let cached = resolvedCache[raw] {
+            return cached
+        }
+
+        if raw.hasPrefix("https://") || raw.hasPrefix("http://") {
+            let direct = URL(string: raw)
+            if let direct {
+                resolvedCache[raw] = direct
+            }
+            return direct
+        }
+
+        for objectPath in storageObjectPathCandidates(from: raw) where !objectPath.isEmpty {
+            if let cached = resolvedCache[objectPath] {
+                resolvedCache[raw] = cached
+                return cached
+            }
+
+            do {
+                let signedURL = try await signedStorageURL(for: objectPath)
+                resolvedCache[objectPath] = signedURL
+                resolvedCache[raw] = signedURL
+                return signedURL
+            } catch {
+                continue
+            }
+        }
+
+        let fallback = firebaseMediaURL(from: raw)
+            ?? storageMediaURL(forObjectPath: storageObjectPathCandidates(from: raw).first ?? "")
+
+        if let fallback {
+            resolvedCache[raw] = fallback
+        }
+        return fallback
+    }
+
+    private func signedStorageURL(for objectPath: String) async throws -> URL {
+        let ref = Storage.storage().reference(withPath: objectPath)
+        do {
+            return try await ref.downloadURL()
+        } catch {
+            // One retry helps with transient network/auth hiccups that affect only some cards.
+            try await Task.sleep(nanoseconds: 200_000_000)
+            return try await ref.downloadURL()
+        }
+    }
 }
