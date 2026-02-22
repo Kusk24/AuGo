@@ -647,16 +647,18 @@ struct CampusMapView: View {
                     ZStack {
                         mapView
                         if displayClusters.isEmpty {
-                            VStack {
+                            VStack(spacing: 0) {
                                 Text(postDisplayMode == .special ? "No emoji posts nearby" : "No posts nearby")
                                     .font(.footnote)
                                     .padding(8)
                                     .background(.ultraThinMaterial)
                                     .cornerRadius(8)
                                     .shadow(radius: 2)
-                                    .padding()
+                                    .padding(.top, 92)
+                                    .padding(.horizontal, 16)
                                 Spacer()
                             }
+                            .allowsHitTesting(false)
                         }
                         filterMenu
                     }

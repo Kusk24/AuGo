@@ -39,11 +39,10 @@ final class AnnouncementCenter: ObservableObject {
         }
     }
     
-    // MARK: - Firestore listener (ACTIVE announcements only)
+    // MARK: - Firestore listener (currently visible announcements)
     
     private func listenToActiveAnnouncements() {
         listener = db.collection("announcements")
-            .whereField("status", isEqualTo: "active")
             .addSnapshotListener { [weak self] snapshot, error in
                 guard let self else { return }
                 
@@ -62,7 +61,8 @@ final class AnnouncementCenter: ObservableObject {
                     self.parseAnnouncement(doc)
                 }
                 .filter { ann in
-                    ann.startDate <= now && now <= ann.endDate
+                    let displayStatus = ann.displayStatus(referenceDate: now)
+                    return displayStatus == .active && ann.startDate <= now && now <= ann.endDate
                 }
                 .sorted { $0.createdAt > $1.createdAt }
             }
@@ -74,28 +74,34 @@ final class AnnouncementCenter: ObservableObject {
         
         guard
             let title = data["title"] as? String,
-            let body = data["body"] as? String,
-            let department = data["department"] as? String,
-            let isUrgent = data["isUrgent"] as? Bool,
-            let createdByUID = data["createdByUID"] as? String,
-            let createdByName = data["createdByName"] as? String,
-            let createdByEmail = data["createdByEmail"] as? String,
             let statusRaw = data["status"] as? String,
-            let status = AnnouncementStatus.fromFirestore(statusRaw),
-            let createdAt = (data["createdAt"] as? Timestamp)?.dateValue(),
-            let submittedAt = (data["submittedAt"] as? Timestamp)?.dateValue(),
-            let startDate = (data["startDate"] as? Timestamp)?.dateValue(),
-            let endDate = (data["endDate"] as? Timestamp)?.dateValue()
+            let status = AnnouncementStatus.fromFirestore(statusRaw)
         else {
             print("⚠️ Invalid announcement document:", doc.documentID)
             return nil
         }
+
+        let body = (data["body"] as? String) ?? (data["content"] as? String) ?? ""
+        let department = (data["department"] as? String) ?? "General"
+        let isUrgent = data["isUrgent"] as? Bool ?? false
+        let createdByUID = (data["createdByUID"] as? String) ?? ""
+        let createdByName = (data["createdByName"] as? String) ?? "Unknown"
+        let createdByEmail = (data["createdByEmail"] as? String) ?? ""
+
+        let createdAt = (data["createdAt"] as? Timestamp)?.dateValue()
+            ?? (data["submittedAt"] as? Timestamp)?.dateValue()
+            ?? Date()
+        let submittedAt = (data["submittedAt"] as? Timestamp)?.dateValue() ?? createdAt
+        let startDate = (data["startDate"] as? Timestamp)?.dateValue() ?? createdAt
+        let endDate = (data["endDate"] as? Timestamp)?.dateValue()
+            ?? Calendar.current.date(byAdding: .day, value: 1, to: startDate)
+            ?? startDate
         
         let approvedAt = (data["approvedAt"] as? Timestamp)?.dateValue()
         let rejectedAt = (data["rejectedAt"] as? Timestamp)?.dateValue()
         
-        let latitude = data["latitude"] as? Double
-        let longitude = data["longitude"] as? Double
+        let latitude = toDouble(data["latitude"])
+        let longitude = toDouble(data["longitude"])
         let link = data["link"] as? String
         let photoPaths = data["photoPaths"] as? [String] ?? []
         let coinReward = (data["coinReward"] as? Double)
@@ -127,5 +133,13 @@ final class AnnouncementCenter: ObservableObject {
             longitude: longitude,
             isRead: false
         )
+    }
+
+    private func toDouble(_ value: Any?) -> Double? {
+        if let doubleValue = value as? Double { return doubleValue }
+        if let intValue = value as? Int { return Double(intValue) }
+        if let number = value as? NSNumber { return number.doubleValue }
+        if let stringValue = value as? String, let parsed = Double(stringValue) { return parsed }
+        return nil
     }
 }

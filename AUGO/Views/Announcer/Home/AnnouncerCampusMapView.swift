@@ -11,7 +11,6 @@ struct AnnouncerCampusMapView: View {
     
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var selectedAnnouncement: Announcement?
-    @State private var showSingleAnnouncement = false
     @State private var isPresentingCreateAnnouncement = false
     @State private var showNotificationList = false
     @State private var mapAnnouncements: [Announcement] = []
@@ -38,7 +37,6 @@ struct AnnouncerCampusMapView: View {
                                     AnnouncementPinView(announcement: ann) {
                                         announcementCenter.markAsRead(ann)
                                         selectedAnnouncement = ann
-                                        showSingleAnnouncement = true
                                     }
                                 }
                             }
@@ -100,10 +98,8 @@ struct AnnouncerCampusMapView: View {
             NotificationListView()
                 .environmentObject(notificationManager)
         }
-        .sheet(isPresented: $showSingleAnnouncement) {
-            if let ann = selectedAnnouncement {
-                SingleAnnouncementView(announcement: ann)
-            }
+        .sheet(item: $selectedAnnouncement) { ann in
+            SingleAnnouncementView(announcement: ann)
         }
         .navigationDestination(isPresented: $isPresentingCreateAnnouncement) {
             CreateAnnouncementView(

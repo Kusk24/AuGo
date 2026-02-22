@@ -13,12 +13,12 @@ enum AnnouncementStatus: String, Codable {
         switch rawValue.lowercased() {
         case "pending":
             return .pending
-        case "scheduled", "approved":
+        case "scheduled":
             return .scheduled
+        case "approved", "active", "published":
+            return .active
         case "declined", "rejected":
             return .declined
-        case "active":
-            return .active
         case "expired":
             return .expired
         case "removed":
