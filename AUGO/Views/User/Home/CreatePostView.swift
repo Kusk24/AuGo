@@ -76,11 +76,10 @@ struct CreatePostView: View {
 
     var body: some View {
         ZStack {
-            Color.Brand.primary.opacity(0.06)
+            Color.Brand.appBackground
                 .ignoresSafeArea()
 
-            VStack(spacing: 12) {
-
+            ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
                         // User avatar with initials
@@ -127,6 +126,7 @@ struct CreatePostView: View {
                                 .foregroundColor(.orange)
                             Text("Coins: \(coinsText(coinBalance))")
                                 .font(.caption.weight(.semibold))
+                                .foregroundColor(.primary)
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
@@ -138,6 +138,7 @@ struct CreatePostView: View {
                                 .foregroundColor(Color.Brand.primary)
                             Text("Free posts left: \(freePostsLeft)/\(freePostLimit)")
                                 .font(.caption.weight(.semibold))
+                                .foregroundColor(.primary)
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
@@ -147,7 +148,7 @@ struct CreatePostView: View {
 
                     ZStack(alignment: .topLeading) {
                         RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(UIColor.systemGray6))
+                            .fill(Color.Brand.surfaceMuted)
                             .stroke(hasInappropriateContent ? Color.red : Color.clear, lineWidth: 2)
 
                         TextEditor(text: $message)
@@ -157,7 +158,7 @@ struct CreatePostView: View {
 
                         if message.isEmpty {
                             Text("Share something with the campus.")
-                                .foregroundColor(.gray.opacity(0.6))
+                                .foregroundColor(.secondary)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 12)
                         }
@@ -261,7 +262,7 @@ struct CreatePostView: View {
                                             Text(emoji)
                                                 .font(.system(size: 24))
                                                 .frame(width: 44, height: 44)
-                                                .background((selectedEmojiPin == emoji ? Color.Brand.primary.opacity(0.22) : Color(UIColor.systemGray6)))
+                                                .background((selectedEmojiPin == emoji ? Color.Brand.primary.opacity(0.22) : Color.Brand.surfaceMuted))
                                                 .clipShape(RoundedRectangle(cornerRadius: 10))
                                         }
                                         .buttonStyle(.plain)
@@ -286,11 +287,21 @@ struct CreatePostView: View {
                 .padding()
                 .background(
                     RoundedRectangle(cornerRadius: 16)
-                        .fill(Color.white)
+                        .fill(Color.Brand.surface)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                        )
                         .shadow(color: .black.opacity(0.06), radius: 4, y: 3)
                 )
                 .padding(.horizontal)
-
+                .padding(.vertical, 12)
+            }
+        }
+        .navigationTitle("Create Post")
+        .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .bottom) {
+            HStack {
                 Button {
                     Task {
                         await submitPost()
@@ -305,18 +316,18 @@ struct CreatePostView: View {
                             .font(.headline)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
+                    .padding(.vertical, 12)
                     .background(canPost ? Color.Brand.primary : Color.gray.opacity(0.3))
                     .foregroundColor(.white)
-                    .cornerRadius(10)
+                    .cornerRadius(12)
                 }
                 .disabled(!canPost || isSubmitting)
-                .padding(.horizontal)
-                .padding(.bottom, 8)
             }
+            .padding(.horizontal)
+            .padding(.top, 8)
+            .padding(.bottom, 8)
+            .background(.ultraThinMaterial)
         }
-        .navigationTitle("Create Post")
-        .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             print("🔐 Requesting location permission...")
             locationManager.requestWhenInUseAuthorization()

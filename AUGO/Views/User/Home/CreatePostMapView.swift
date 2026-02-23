@@ -33,14 +33,18 @@ struct CreatePostMapView: View {
 
     var body: some View {
         ZStack {
-            Color.Brand.primary.opacity(0.06)
+            Color.Brand.appBackground
                 .ignoresSafeArea()
 
             VStack(spacing: 12) {
 
                 ZStack {
                     RoundedRectangle(cornerRadius: 24)
-                        .fill(Color(UIColor.systemGray6))
+                        .fill(Color.Brand.surface)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 24)
+                                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                        )
                         .shadow(color: .black.opacity(0.08), radius: 6, y: 3)
                         .overlay(
                             Map(position: $cameraPosition) {
@@ -70,6 +74,7 @@ struct CreatePostMapView: View {
                             .foregroundColor(.orange)
                         Text("Coins: \(coinsText(coinBalance))")
                             .font(.caption.weight(.semibold))
+                            .foregroundColor(.primary)
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
@@ -81,6 +86,7 @@ struct CreatePostMapView: View {
                             .foregroundColor(Color.Brand.primary)
                         Text("Free posts left: \(freePostsLeft)/\(freePostLimit)")
                             .font(.caption.weight(.semibold))
+                            .foregroundColor(.primary)
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)

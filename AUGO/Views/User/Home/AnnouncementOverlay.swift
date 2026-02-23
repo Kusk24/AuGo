@@ -43,9 +43,9 @@ struct AnnouncementOverlay: View {
                     } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.black)
+                            .foregroundColor(.primary)
                             .padding(8)
-                            .background(Color(UIColor.systemGray5))
+                            .background(Color.Brand.surfaceMuted)
                             .clipShape(Circle())
                     }
                 }
@@ -83,7 +83,11 @@ struct AnnouncementOverlay: View {
             }
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color.white)
+                    .fill(Color.Brand.surface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    )
                     .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
             )
             .padding(.horizontal, 24)
@@ -150,7 +154,7 @@ private struct AnnouncementCard: View {
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(UIColor.systemGray6))
+                .fill(Color.Brand.surfaceMuted)
         )
     }
 

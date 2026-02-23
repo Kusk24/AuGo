@@ -123,7 +123,7 @@ struct CreateAnnouncementView: View {
                                                 case .empty:
                                                     ZStack {
                                                         RoundedRectangle(cornerRadius: 10)
-                                                            .fill(Color(UIColor.systemGray5))
+                                                            .fill(Color.Brand.surfaceMuted)
                                                         ProgressView()
                                                     }
                                                 case .success(let image):
@@ -133,7 +133,7 @@ struct CreateAnnouncementView: View {
                                                 case .failure:
                                                     ZStack {
                                                         RoundedRectangle(cornerRadius: 10)
-                                                            .fill(Color(UIColor.systemGray5))
+                                                            .fill(Color.Brand.surfaceMuted)
                                                         Image(systemName: "photo")
                                                             .foregroundColor(.secondary)
                                                     }
