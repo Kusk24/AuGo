@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>MICROSOFT_TENANT_ID</key>
+	<string>c1f3dc23-b7f8-48d3-9b5d-2b12f158f01f</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

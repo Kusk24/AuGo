@@ -41,31 +41,59 @@ struct LoginView: View {
                     Spacer()
                     
                     if mode == .student {
-                        Button {
-                            Task {
-                                await authManager.signInWithGoogle()
-                            }
-                        } label: {
-                            HStack(spacing: 12) {
-                                if authManager.isLoading {
-                                    ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                } else {
-                                    Image(systemName: "globe")
-                                        .font(.system(size: 20))
-                                    Text("Sign in with Google")
-                                        .font(.headline)
+                        VStack(spacing: 12) {
+                            Button {
+                                Task {
+                                    await authManager.signInWithGoogle()
                                 }
+                            } label: {
+                                HStack(spacing: 12) {
+                                    if authManager.isLoading {
+                                        ProgressView()
+                                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    } else {
+                                        Image(systemName: "globe")
+                                            .font(.system(size: 20))
+                                        Text("Sign in with Google")
+                                            .font(.headline)
+                                    }
+                                }
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                                .background(
+                                    Capsule()
+                                        .fill(Color.Brand.primary)
+                                )
                             }
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(
-                                Capsule()
-                                    .fill(Color.Brand.primary)
-                            )
+                            .disabled(authManager.isLoading)
+
+                            Button {
+                                Task {
+                                    await authManager.signInWithMicrosoft()
+                                }
+                            } label: {
+                                HStack(spacing: 12) {
+                                    if authManager.isLoading {
+                                        ProgressView()
+                                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    } else {
+                                        Image(systemName: "building.2.crop.circle")
+                                            .font(.system(size: 20))
+                                        Text("Sign in with Microsoft")
+                                            .font(.headline)
+                                    }
+                                }
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                                .background(
+                                    Capsule()
+                                        .fill(Color.Brand.primary.opacity(0.86))
+                                )
+                            }
+                            .disabled(authManager.isLoading)
                         }
-                        .disabled(authManager.isLoading)
                         .padding(.horizontal, 32)
                         
                         Button {
@@ -166,7 +194,7 @@ struct LoginView: View {
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 32)
                     } else {
-                        Text(mode == .student ? "Sign in with your university Google account" : "Announcer sign in is separate and uses email/password.")
+                        Text(mode == .student ? "Sign in with your university Google or Microsoft account." : "Announcer sign in is separate and uses email/password.")
                             .font(.caption)
                             .foregroundColor(.gray)
                             .multilineTextAlignment(.center)

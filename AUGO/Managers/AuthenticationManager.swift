@@ -29,6 +29,8 @@ class AuthenticationManager: ObservableObject {
     private let db = Firestore.firestore()
     private let notificationManager = NotificationManager.shared
     private var userProfileListener: ListenerRegistration?
+    private var pendingOAuthCredential: AuthCredential?
+    private var pendingOAuthEmail: String?
     
     init() {
         // Check if user is already signed in
@@ -58,6 +60,10 @@ class AuthenticationManager: ObservableObject {
     // MARK: - Google Sign In
     func signInWithGoogle() async {
         await signInWithGoogle(requiredRole: nil)
+    }
+
+    func signInWithMicrosoft() async {
+        await signInWithMicrosoft(requiredRole: nil)
     }
     
     func signInAnnouncerWithEmailPassword(email: String, password: String) async {
@@ -182,6 +188,45 @@ class AuthenticationManager: ObservableObject {
             requiredRole: requiredRole
         )
     }
+
+    private func signInWithMicrosoft(requiredRole: AccountRole?) async {
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            let provider = OAuthProvider(providerID: "microsoft.com")
+            if let tenantID = microsoftTenantID {
+                provider.customParameters = ["tenant": tenantID]
+            }
+
+            let credential = try await oauthCredential(from: provider)
+            let authResult = try await auth.signIn(with: credential)
+
+            guard let email = authResult.user.email?.lowercased(),
+                  email.hasSuffix("@au.edu") else {
+                try? auth.signOut()
+                self.user = nil
+                self.isAuthenticated = false
+                self.role = .unknown
+                self.isProfileComplete = false
+                self.errorMessage = "Access denied. Please sign in with your @au.edu email address."
+                isLoading = false
+                return
+            }
+
+            try await linkPendingCredentialIfNeeded(signedInUser: authResult.user)
+            await handleAuthResult(authResult, requiredRole: requiredRole, providerID: "microsoft.com")
+        } catch {
+            if await handleAccountExistsWithDifferentCredential(error, attemptedProviderID: "microsoft.com") {
+                isLoading = false
+                return
+            }
+            errorMessage = "Sign in failed: \(error.localizedDescription)"
+            print("Microsoft Sign-In Error: \(error)")
+        }
+
+        isLoading = false
+    }
     
     private func performGoogleSignIn(
         hostedDomain: String? = nil,
@@ -243,57 +288,150 @@ class AuthenticationManager: ObservableObject {
             )
             
             let authResult = try await auth.signIn(with: credential)
-            
-            if requiredRole == .announcer {
-                let announcerProfile = try await fetchAnnouncerProfile(
-                    uid: authResult.user.uid,
-                    email: authResult.user.email?.lowercased()
-                )
-                
-                if announcerProfile == nil {
-                    do {
-                        try auth.signOut()
-                    } catch {
-                        print("Sign out failed after announcer check: \(error)")
-                    }
-                    GIDSignIn.sharedInstance.signOut()
-                    self.user = nil
-                    self.isAuthenticated = false
-                    self.role = .unknown
-                    self.isProfileComplete = false
-                    self.errorMessage = "This Google account is not registered as an announcer."
-                    isLoading = false
-                    return
-                }
-            }
-            
-            self.user = authResult.user
-            self.isAuthenticated = true
-            notificationManager.startListeningForUserNotifications(userId: authResult.user.uid)
-            
-            if requiredRole == .announcer {
-                // Explicit announcer sign-in path
-                detectRoleAndFetchProfile(uid: authResult.user.uid)
-            } else {
-                // Student Google SSO should always route through the user flow
-                fetchUserProfile(uid: authResult.user.uid)
-            }
-            
-            // Register device for push notifications
-            await notificationManager.registerDeviceForNotifications(userId: authResult.user.uid)
+            try await linkPendingCredentialIfNeeded(signedInUser: authResult.user)
+            await handleAuthResult(authResult, requiredRole: requiredRole, providerID: "google.com")
             
         } catch {
+            if await handleAccountExistsWithDifferentCredential(error, attemptedProviderID: "google.com") {
+                isLoading = false
+                return
+            }
             errorMessage = "Sign in failed: \(error.localizedDescription)"
             print("Google Sign-In Error: \(error)")
         }
         
         isLoading = false
     }
+
+    private var microsoftTenantID: String? {
+        guard let raw = Bundle.main.object(forInfoDictionaryKey: "MICROSOFT_TENANT_ID") as? String else {
+            return nil
+        }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func oauthCredential(from provider: OAuthProvider) async throws -> AuthCredential {
+        try await withCheckedThrowingContinuation { continuation in
+            provider.getCredentialWith(nil) { credential, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                guard let credential else {
+                    continuation.resume(throwing: NSError(
+                        domain: "AuthenticationManager",
+                        code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "Unable to obtain OAuth credential."]
+                    ))
+                    return
+                }
+                continuation.resume(returning: credential)
+            }
+        }
+    }
+
+    private func handleAuthResult(
+        _ authResult: AuthDataResult,
+        requiredRole: AccountRole?,
+        providerID: String
+    ) async {
+        if requiredRole == .announcer {
+            do {
+                let announcerProfile = try await fetchAnnouncerProfile(
+                    uid: authResult.user.uid,
+                    email: authResult.user.email?.lowercased()
+                )
+                if announcerProfile == nil {
+                    try? auth.signOut()
+                    if providerID == "google.com" {
+                        GIDSignIn.sharedInstance.signOut()
+                    }
+                    self.user = nil
+                    self.isAuthenticated = false
+                    self.role = .unknown
+                    self.isProfileComplete = false
+                    self.errorMessage = "This account is not registered as an announcer."
+                    return
+                }
+            } catch {
+                self.errorMessage = "Failed to verify announcer profile: \(error.localizedDescription)"
+                return
+            }
+        }
+
+        self.user = authResult.user
+        self.isAuthenticated = true
+        notificationManager.startListeningForUserNotifications(userId: authResult.user.uid)
+
+        if requiredRole == .announcer {
+            detectRoleAndFetchProfile(uid: authResult.user.uid)
+        } else {
+            fetchUserProfile(uid: authResult.user.uid)
+        }
+
+        await notificationManager.registerDeviceForNotifications(userId: authResult.user.uid)
+    }
+
+    private func handleAccountExistsWithDifferentCredential(
+        _ error: Error,
+        attemptedProviderID: String
+    ) async -> Bool {
+        guard let code = AuthErrorCode(rawValue: (error as NSError).code),
+              code == .accountExistsWithDifferentCredential else {
+            return false
+        }
+
+        let nsError = error as NSError
+        let email = (nsError.userInfo[AuthErrorUserInfoEmailKey] as? String)?.lowercased()
+        let pendingCredential = nsError.userInfo[AuthErrorUserInfoUpdatedCredentialKey] as? AuthCredential
+
+        pendingOAuthCredential = pendingCredential
+        pendingOAuthEmail = email
+
+        guard let email else {
+            errorMessage = "Account already exists with another sign-in method. Sign in with your existing provider first."
+            return true
+        }
+
+        if attemptedProviderID == "microsoft.com" {
+            errorMessage = "This email (\(email)) already exists. Sign in with Google once, then Microsoft will be linked automatically."
+        } else if attemptedProviderID == "google.com" {
+            errorMessage = "This email (\(email)) already exists. Sign in with Microsoft once, then Google will be linked automatically."
+        } else {
+            errorMessage = "Account already exists with another sign-in method. Use your existing provider first."
+        }
+
+        return true
+    }
+
+    private func linkPendingCredentialIfNeeded(signedInUser: FirebaseAuth.User) async throws {
+        guard let pending = pendingOAuthCredential,
+              let pendingEmail = pendingOAuthEmail?.lowercased(),
+              let currentEmail = signedInUser.email?.lowercased(),
+              pendingEmail == currentEmail else {
+            return
+        }
+
+        do {
+            _ = try await signedInUser.link(with: pending)
+        } catch {
+            if let code = AuthErrorCode(rawValue: (error as NSError).code),
+               code == .credentialAlreadyInUse || code == .providerAlreadyLinked {
+                // Ignore; account is effectively linked or already bound elsewhere.
+            } else {
+                throw error
+            }
+        }
+
+        pendingOAuthCredential = nil
+        pendingOAuthEmail = nil
+    }
     
     // MARK: - Detect Role and Fetch Profile
     func detectRoleAndFetchProfile(uid: String) {
         let providerIDs = auth.currentUser?.providerData.map(\.providerID) ?? []
-        if providerIDs.contains("google.com") {
+        if providerIDs.contains("google.com") || providerIDs.contains("microsoft.com") {
             // Keep student Google users out of announcer-only reads
             fetchUserProfile(uid: uid)
             return
@@ -595,6 +733,8 @@ class AuthenticationManager: ObservableObject {
             GIDSignIn.sharedInstance.signOut()
             userProfileListener?.remove()
             userProfileListener = nil
+            pendingOAuthCredential = nil
+            pendingOAuthEmail = nil
             notificationManager.stopListeningForUserNotifications()
             self.user = nil
             self.userProfile = nil
