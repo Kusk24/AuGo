@@ -173,8 +173,13 @@ class AuthenticationManager: ObservableObject {
         isLoading = true
         errorMessage = nil
         
-        // Use the iOS client ID from Firebase Console
-        let clientID = "725089765922-4avllhgdh56mkfqfiq8gdag958agi2h5.apps.googleusercontent.com"
+        // Read iOS client ID from active Firebase config instead of hardcoding.
+        let clientID = FirebaseApp.app()?.options.clientID ?? ""
+        guard !clientID.isEmpty else {
+            errorMessage = "Missing Google client ID in Firebase configuration."
+            isLoading = false
+            return
+        }
         
         // Configure Google Sign-In with domain restriction
         let config = GIDConfiguration(clientID: clientID)
@@ -192,6 +197,7 @@ class AuthenticationManager: ObservableObject {
     private func signInWithMicrosoft(requiredRole: AccountRole?) async {
         isLoading = true
         errorMessage = nil
+        var attemptedCredential: AuthCredential?
 
         do {
             let provider = OAuthProvider(providerID: "microsoft.com")
@@ -200,6 +206,7 @@ class AuthenticationManager: ObservableObject {
             }
 
             let credential = try await oauthCredential(from: provider)
+            attemptedCredential = credential
             let authResult = try await auth.signIn(with: credential)
 
             guard let email = authResult.user.email?.lowercased(),
@@ -217,7 +224,11 @@ class AuthenticationManager: ObservableObject {
             try await linkPendingCredentialIfNeeded(signedInUser: authResult.user)
             await handleAuthResult(authResult, requiredRole: requiredRole, providerID: "microsoft.com")
         } catch {
-            if await handleAccountExistsWithDifferentCredential(error, attemptedProviderID: "microsoft.com") {
+            if await handleAccountExistsWithDifferentCredential(
+                error,
+                attemptedProviderID: "microsoft.com",
+                fallbackCredential: attemptedCredential
+            ) {
                 isLoading = false
                 return
             }
@@ -248,6 +259,7 @@ class AuthenticationManager: ObservableObject {
             return
         }
         
+        var attemptedCredential: AuthCredential?
         do {
             // Present Google Sign-In with optional domain hint
             let result: GIDSignInResult
@@ -286,13 +298,18 @@ class AuthenticationManager: ObservableObject {
                 withIDToken: idToken,
                 accessToken: accessToken
             )
+            attemptedCredential = credential
             
             let authResult = try await auth.signIn(with: credential)
             try await linkPendingCredentialIfNeeded(signedInUser: authResult.user)
             await handleAuthResult(authResult, requiredRole: requiredRole, providerID: "google.com")
             
         } catch {
-            if await handleAccountExistsWithDifferentCredential(error, attemptedProviderID: "google.com") {
+            if await handleAccountExistsWithDifferentCredential(
+                error,
+                attemptedProviderID: "google.com",
+                fallbackCredential: attemptedCredential
+            ) {
                 isLoading = false
                 return
             }
@@ -375,7 +392,8 @@ class AuthenticationManager: ObservableObject {
 
     private func handleAccountExistsWithDifferentCredential(
         _ error: Error,
-        attemptedProviderID: String
+        attemptedProviderID: String,
+        fallbackCredential: AuthCredential? = nil
     ) async -> Bool {
         guard let code = AuthErrorCode(rawValue: (error as NSError).code),
               code == .accountExistsWithDifferentCredential else {
@@ -384,7 +402,10 @@ class AuthenticationManager: ObservableObject {
 
         let nsError = error as NSError
         let email = (nsError.userInfo[AuthErrorUserInfoEmailKey] as? String)?.lowercased()
-        let pendingCredential = nsError.userInfo[AuthErrorUserInfoUpdatedCredentialKey] as? AuthCredential
+        let pendingCredential =
+            (nsError.userInfo[AuthErrorUserInfoUpdatedCredentialKey] as? AuthCredential) ??
+            (nsError.userInfo["FIRAuthErrorUserInfoPendingCredentialKey"] as? AuthCredential) ??
+            fallbackCredential
 
         pendingOAuthCredential = pendingCredential
         pendingOAuthEmail = email
@@ -394,13 +415,7 @@ class AuthenticationManager: ObservableObject {
             return true
         }
 
-        if attemptedProviderID == "microsoft.com" {
-            errorMessage = "This email (\(email)) already exists. Sign in with Google once, then Microsoft will be linked automatically."
-        } else if attemptedProviderID == "google.com" {
-            errorMessage = "This email (\(email)) already exists. Sign in with Microsoft once, then Google will be linked automatically."
-        } else {
-            errorMessage = "Account already exists with another sign-in method. Use your existing provider first."
-        }
+        errorMessage = "This email (\(email)) already exists. Use your existing sign-in method once and AUGO will link providers automatically."
 
         return true
     }

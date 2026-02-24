@@ -2,8 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>MICROSOFT_TENANT_ID</key>
-	<string>c1f3dc23-b7f8-48d3-9b5d-2b12f158f01f</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -13,12 +11,15 @@
 			<string>GoogleSignIn</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.googleusercontent.apps.725089765922-4avllhgdh56mkfqfiq8gdag958agi2h5</string>
+				<string>com.googleusercontent.apps.725089765922-5gsnncikurfp6d4tj78tmd0acn62jqqq</string>
+				<string>app-1-725089765922-ios-e637ecc0acb4abb999d87b</string>
 			</array>
 		</dict>
 	</array>
 	<key>FirebaseAppDelegateProxyEnabled</key>
 	<false/>
+	<key>MICROSOFT_TENANT_ID</key>
+	<string>c1f3dc23-b7f8-48d3-9b5d-2b12f158f01f</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

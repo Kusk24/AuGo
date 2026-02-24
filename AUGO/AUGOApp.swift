@@ -1,6 +1,8 @@
 // AUGOApp.swift
 import SwiftUI
 import FirebaseCore
+import FirebaseAuth
+import GoogleSignIn
 import UserNotifications
 #if canImport(FirebaseMessaging)
 import FirebaseMessaging
@@ -37,6 +39,17 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                      didFailToRegisterForRemoteNotificationsWithError error: Error) {
         print("❌ Failed to register for remote notifications: \(error)")
     }
+
+    // Required when FirebaseAppDelegateProxyEnabled is false.
+    // Handles OAuth callback URLs (Microsoft, Google, etc.) and hands them to Firebase/Auth SDKs.
+    func application(_ app: UIApplication,
+                     open url: URL,
+                     options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
+        if Auth.auth().canHandle(url) {
+            return true
+        }
+        return GIDSignIn.sharedInstance.handle(url)
+    }
 }
 
 @main
@@ -62,6 +75,12 @@ struct AUGOApp: App {
                 .environmentObject(notificationManager)
                 .environmentObject(themeManager)
                 .preferredColorScheme(themeManager.preferredColorScheme)
+                .onOpenURL { url in
+                    if Auth.auth().canHandle(url) {
+                        return
+                    }
+                    _ = GIDSignIn.sharedInstance.handle(url)
+                }
                 .onAppear {
                     // Connect router to auth state changes
                     router.observeAuthState(authManager: authManager)
