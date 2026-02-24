@@ -1,5 +1,6 @@
 // LoginView.swift
 import SwiftUI
+import UIKit
 
 struct LoginView: View {
     enum LoginMode {
@@ -52,8 +53,7 @@ struct LoginView: View {
                                         ProgressView()
                                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                     } else {
-                                        Image(systemName: "globe")
-                                            .font(.system(size: 20))
+                                        providerIcon(assetName: "GoogleLogo", fallbackSystemName: "globe")
                                         Text("Sign in with Google")
                                             .font(.headline)
                                     }
@@ -78,8 +78,7 @@ struct LoginView: View {
                                         ProgressView()
                                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                     } else {
-                                        Image(systemName: "building.2.crop.circle")
-                                            .font(.system(size: 20))
+                                        providerIcon(assetName: "MicrosoftLogo", fallbackSystemName: "building.2.crop.circle")
                                         Text("Sign in with Microsoft")
                                             .font(.headline)
                                     }
@@ -206,6 +205,20 @@ struct LoginView: View {
                 }
                 .padding()
             }
+        }
+    }
+
+    @ViewBuilder
+    private func providerIcon(assetName: String, fallbackSystemName: String) -> some View {
+        if UIImage(named: assetName) != nil {
+            Image(assetName)
+                .resizable()
+                .renderingMode(.original)
+                .scaledToFit()
+                .frame(width: 20, height: 20)
+        } else {
+            Image(systemName: fallbackSystemName)
+                .font(.system(size: 20))
         }
     }
 }
