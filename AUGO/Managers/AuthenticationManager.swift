@@ -31,6 +31,18 @@ class AuthenticationManager: ObservableObject {
     private var userProfileListener: ListenerRegistration?
     private var pendingOAuthCredential: AuthCredential?
     private var pendingOAuthEmail: String?
+
+    var postingRestrictionMessage: String? {
+        guard let status = userProfile?.status else { return nil }
+        switch status {
+        case .active:
+            return nil
+        case .suspended:
+            return "Your account is suspended. Posting is temporarily disabled."
+        case .banned:
+            return "Your account is banned. You cannot create new posts."
+        }
+    }
     
     init() {
         // Check if user is already signed in
@@ -764,14 +776,15 @@ class AuthenticationManager: ObservableObject {
     
     // MARK: - Fetch User Rank
     func fetchUserRank(completion: @escaping (Int) -> Void) {
-        guard let currentScore = userProfile?.score else {
+        guard let currentUserID = user?.uid else {
             completion(0)
             return
         }
-        
-        // Query all users with score higher than current user
+
+        // Match leaderboard ranking: ordered list by score descending, contiguous rank by position.
         db.collection("users")
-            .whereField("score", isGreaterThan: currentScore)
+            .order(by: "score", descending: true)
+            .limit(to: 500)
             .getDocuments { snapshot, error in
                 Task { @MainActor in
                     if let error = error {
@@ -779,10 +792,26 @@ class AuthenticationManager: ObservableObject {
                         completion(0)
                         return
                     }
-                    
-                    // Rank is number of users with higher score + 1
-                    let rank = (snapshot?.documents.count ?? 0) + 1
-                    completion(rank)
+
+                    guard let documents = snapshot?.documents else {
+                        completion(0)
+                        return
+                    }
+
+                    let sortedDocuments = documents.sorted { lhs, rhs in
+                        let leftScore = self.parseInt(lhs.data()["score"])
+                        let rightScore = self.parseInt(rhs.data()["score"])
+                        if leftScore == rightScore {
+                            return lhs.documentID < rhs.documentID
+                        }
+                        return leftScore > rightScore
+                    }
+
+                    if let index = sortedDocuments.firstIndex(where: { $0.documentID == currentUserID }) {
+                        completion(index + 1)
+                    } else {
+                        completion(0)
+                    }
                 }
             }
     }

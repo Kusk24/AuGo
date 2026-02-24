@@ -38,6 +38,8 @@ class PostManager: ObservableObject {
     
     enum PostCreationError: LocalizedError {
         case insufficientCoins(required: Double, balance: Double)
+        case accountSuspended
+        case accountBanned
         case invalidPhotoData
         case missingStorageBucket
         case missingAuthToken
@@ -51,6 +53,10 @@ class PostManager: ObservableObject {
                     required,
                     balance
                 )
+            case .accountSuspended:
+                return "Your account is suspended and cannot post right now."
+            case .accountBanned:
+                return "Your account is banned and cannot post."
             case .invalidPhotoData:
                 return "One or more selected photos are invalid."
             case .missingStorageBucket:
@@ -285,6 +291,15 @@ class PostManager: ObservableObject {
                 }
                 
                 let userData = userSnapshot.data() ?? [:]
+                let statusRaw = (userData["status"] as? String)?.lowercased() ?? "active"
+                if statusRaw == "banned" {
+                    errorPointer?.pointee = PostCreationError.accountBanned as NSError
+                    return nil
+                }
+                if statusRaw == "suspended" {
+                    errorPointer?.pointee = PostCreationError.accountSuspended as NSError
+                    return nil
+                }
                 var coinBalance = self.doubleValue(userData["coinBalance"])
                 let rawDailyPostCount = userData["dailyPostCount"] as? Int ?? 0
                 let dailyPostCountDate = (userData["dailyPostCountDate"] as? Timestamp)?.dateValue()

@@ -31,6 +31,10 @@ struct CreatePostMapView: View {
         postManager.userEconomy?.dailyFreePostLimit ?? 0
     }
 
+    private var accountPostingRestriction: String? {
+        authManager.postingRestrictionMessage
+    }
+
     var body: some View {
         ZStack {
             Color.Brand.appBackground
@@ -94,6 +98,18 @@ struct CreatePostMapView: View {
                     .clipShape(Capsule())
                 }
 
+                if let accountPostingRestriction {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.red)
+                        Text(accountPostingRestriction)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                }
+
                 Button {
                     Task {
                         await submitPost()
@@ -113,7 +129,7 @@ struct CreatePostMapView: View {
                     .foregroundColor(.white)
                     .cornerRadius(10)
                 }
-                .disabled(isSubmitting)
+                .disabled(isSubmitting || accountPostingRestriction != nil)
                 .padding(.horizontal)
                 .padding(.bottom, 16)
             }
@@ -137,6 +153,12 @@ struct CreatePostMapView: View {
     
     // MARK: - Submit Post to Firebase
     private func submitPost() async {
+        if let accountPostingRestriction {
+            alertMessage = accountPostingRestriction
+            showAlert = true
+            return
+        }
+
         guard let userId = authManager.user?.uid else {
             alertMessage = "Error: User not authenticated"
             showAlert = true

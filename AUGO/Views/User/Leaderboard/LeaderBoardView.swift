@@ -176,7 +176,12 @@ struct LeaderboardView: View {
 
                     // Keep ranking contiguous and deterministic, highest score first.
                     let fetchedLeaders = parsedUsers
-                        .sorted { $0.score > $1.score }
+                        .sorted { lhs, rhs in
+                            if lhs.score == rhs.score {
+                                return (lhs.id ?? "") < (rhs.id ?? "")
+                            }
+                            return lhs.score > rhs.score
+                        }
                         .enumerated()
                         .map { Leader(user: $0.element, rank: $0.offset + 1) }
                     

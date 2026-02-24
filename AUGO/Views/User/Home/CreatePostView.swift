@@ -41,6 +41,11 @@ struct CreatePostView: View {
         && selectedCategory != nil
         && (!enableEmojiPin || selectedEmojiPin != nil)
         && !hasInappropriateContent
+        && accountPostingRestriction == nil
+    }
+
+    private var accountPostingRestriction: String? {
+        authManager.postingRestrictionMessage
     }
     
     private var userAvatar: String {
@@ -144,6 +149,18 @@ struct CreatePostView: View {
                         .padding(.vertical, 6)
                         .background(Color.Brand.primary.opacity(0.12))
                         .clipShape(Capsule())
+                    }
+
+                    if let accountPostingRestriction {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.red)
+                            Text(accountPostingRestriction)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 4)
                     }
 
                     ZStack(alignment: .topLeading) {
@@ -362,6 +379,12 @@ struct CreatePostView: View {
     
     // MARK: - Submit Post with Current Location
     private func submitPost() async {
+        if let accountPostingRestriction {
+            alertMessage = accountPostingRestriction
+            showAlert = true
+            return
+        }
+
         // Check for inappropriate content
         let filterResult = ContentFilter.containsInappropriateContent(message)
         if filterResult.contains {

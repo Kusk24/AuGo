@@ -125,10 +125,7 @@ struct ProfileView: View {
                     }
                     .padding(.horizontal, 16)
                     .onAppear {
-                        // Fetch rank when view appears
-                        authManager.fetchUserRank { rank in
-                            userRank = rank
-                        }
+                        refreshUserRank()
                         
                         // Fetch user posts with real-time listener
                         if let userId = authManager.user?.uid {
@@ -357,10 +354,14 @@ struct ProfileView: View {
                 print("👤 User changed, re-setting up listener: \(userId)")
                 postManager.fetchUserPosts(userId: userId)
                 authManager.fetchUserProfile(uid: userId)
+                refreshUserRank()
                 Task {
                     await postManager.refreshUserEconomy(userId: userId)
                 }
             }
+        }
+        .onChange(of: authManager.userProfile?.score) { _, _ in
+            refreshUserRank()
         }
     }
     
@@ -387,6 +388,12 @@ struct ProfileView: View {
             if let userId = authManager.user?.uid {
                 postManager.fetchUserPosts(userId: userId)
             }
+        }
+    }
+
+    private func refreshUserRank() {
+        authManager.fetchUserRank { rank in
+            userRank = rank
         }
     }
 }
