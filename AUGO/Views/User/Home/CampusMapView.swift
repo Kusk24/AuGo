@@ -46,6 +46,7 @@ struct CampusMapView: View {
     @State private var postMapping: [UUID: Post] = [:]
     @State private var postByDocumentID: [String: Post] = [:]
     @State private var userDisplayNames: [String: String] = [:]
+    @State private var loadingUserDisplayNameIDs: Set<String> = []
     @State private var pendingSelectedPost: CampusPost?
     @State private var selectedPostDocumentID: String?
     
@@ -68,20 +69,20 @@ struct CampusMapView: View {
         let postsToUse = posts ?? postManager.allPosts
         let filtered = postsToUse.filter { selectedCategories.contains($0.category) }
         let modeFiltered = filtered.filter { postDisplayMode == .special ? isSpecialEmojiPost($0) : !isSpecialEmojiPost($0) }
-        print("🎯 Filtering: \(postsToUse.count) total posts -> \(filtered.count) after category filter -> \(modeFiltered.count) in \(postDisplayMode.rawValue)")
         
         let userIDs = Set(modeFiltered.map(\.userId))
-        let knownUserIDs = Set(userDisplayNames.keys)
-        if !userIDs.isSubset(of: knownUserIDs) {
+        let missingUserIDs = userIDs.filter { userDisplayNames[$0] == nil && !loadingUserDisplayNameIDs.contains($0) }
+        if !missingUserIDs.isEmpty {
+            loadingUserDisplayNameIDs.formUnion(missingUserIDs)
+            let missing = Array(missingUserIDs)
             Task {
-                await ensureUserDisplayNames(for: modeFiltered)
+                await ensureUserDisplayNames(for: missing)
             }
         }
 
         let (clusters, mapping) = postDisplayMode == .special
             ? createSpecialClusters(from: modeFiltered)
             : createClusters(from: modeFiltered)
-        print("📌 Created \(clusters.count) clusters from \(modeFiltered.count) posts")
 
         displayClusters = clusters
         postMapping = mapping
@@ -89,8 +90,6 @@ struct CampusMapView: View {
             guard let id = post.id else { return nil }
             return (id, post)
         })
-        print("🗺️ Updated postMapping with \(mapping.count) entries")
-        print("🔑 Mapping keys: \(mapping.keys.map { $0.uuidString })")
     }
 
     private var categoryFilterOptions: [Post.PostCategory] {
@@ -98,8 +97,6 @@ struct CampusMapView: View {
     }
     
     private func createClusters(from posts: [Post]) -> ([PostCluster], [UUID: Post]) {
-        print("🔨 createClusters called with \(posts.count) posts")
-        
         let radius: CLLocationDistance = 50
         var remaining = posts
         var result: [PostCluster] = []
@@ -144,7 +141,6 @@ struct CampusMapView: View {
             result.append(PostCluster(coordinate: grouped[0].coordinate, posts: grouped))
         }
 
-        print("✅ Created \(result.count) clusters with total of \(newMapping.count) posts")
         return (result, newMapping)
     }
 
@@ -195,15 +191,13 @@ struct CampusMapView: View {
         return fallbackId
     }
     
-    private func ensureUserDisplayNames(for posts: [Post]) async {
-        let userIDs = Array(Set(posts.map(\.userId)))
-        let missingIDs = userIDs.filter { userDisplayNames[$0] == nil }
-        guard !missingIDs.isEmpty else { return }
+    private func ensureUserDisplayNames(for userIDs: [String]) async {
+        guard !userIDs.isEmpty else { return }
         
         let db = Firestore.firestore()
         var resolvedNames: [String: String] = [:]
         
-        for chunk in missingIDs.chunked(into: 10) {
+        for chunk in userIDs.chunked(into: 10) {
             do {
                 let snapshot = try await db.collection("users")
                     .whereField(FieldPath.documentID(), in: chunk)
@@ -218,31 +212,18 @@ struct CampusMapView: View {
             }
         }
         
-        for id in missingIDs where resolvedNames[id] == nil {
+        for id in userIDs where resolvedNames[id] == nil {
             resolvedNames[id] = id
         }
-        
-        guard !resolvedNames.isEmpty else { return }
-        
+
         await MainActor.run {
             userDisplayNames.merge(resolvedNames) { _, new in new }
-            updateClustersAndMapping(posts: posts)
+            loadingUserDisplayNameIDs.subtract(userIDs)
+            updateClustersAndMapping()
         }
     }
     
     // MARK: - Helper Methods
-    
-    private func handlePostsChange(_ newValue: [Post]) {
-        print("📍 Posts changed: \(newValue.count) posts available")
-        if newValue.isEmpty {
-            print("⚠️ WARNING: No posts in postManager.allPosts")
-        } else {
-            print("✅ Posts available:")
-            for post in newValue.prefix(3) {
-                print("   - \(post.content) at (\(post.latitude), \(post.longitude))")
-            }
-        }
-    }
     
     private func reportPost(category: Report.ReportCategory) {
         guard let post = postToReport,
@@ -700,9 +681,6 @@ struct CampusMapView: View {
         }
         .onAppear {
             cameraPosition = .region(viewModel.campusRegion)
-            print("🗺️ CampusMapView appeared")
-            print("📊 Current state: \(postManager.allPosts.count) posts in PostManager")
-            print("🎯 Selected categories: \(selectedCategories.map { $0.rawValue })")
             updateClustersAndMapping()
             startARSpawnsListener()
         }
@@ -711,16 +689,12 @@ struct CampusMapView: View {
             arSpawnsListener = nil
         }
         .onReceive(postManager.$allPosts) { newValue in
-            print("📬 Received posts update: \(newValue.count) posts")
-            handlePostsChange(newValue)
             updateClustersAndMapping(posts: newValue)
         }
-        .onChange(of: selectedCategories) { _, newValue in
-            print("🔍 Filter changed: \(newValue.count) categories selected")
+        .onChange(of: selectedCategories) { _, _ in
             updateClustersAndMapping()
         }
-        .onChange(of: postDisplayMode) { _, newValue in
-            print("🎭 Post mode changed: \(newValue.rawValue)")
+        .onChange(of: postDisplayMode) { _, _ in
             updateClustersAndMapping()
         }
         .toolbar {

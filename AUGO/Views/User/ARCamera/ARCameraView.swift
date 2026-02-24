@@ -144,6 +144,10 @@ private struct ARRealityContainerView: UIViewRepresentable {
         return arView
     }
 
+    static func dismantleUIView(_ uiView: ARView, coordinator: Coordinator) {
+        coordinator.detach(from: uiView)
+    }
+
     func updateUIView(_ arView: ARView, context: Context) {
         context.coordinator.onCapture = onCapture
         context.coordinator.updateFloatingPosts(nearbyPosts)
@@ -161,6 +165,7 @@ private struct ARRealityContainerView: UIViewRepresentable {
         private weak var arView: ARView?
         private var anchorEntity: AnchorEntity?
         private weak var currentModelEntity: ModelEntity?
+        private weak var tapGestureRecognizer: UITapGestureRecognizer?
         private var currentSpawnID: String?
         private var baseCharacterScale: SIMD3<Float>?
         private var postAnchors: [String: AnchorEntity] = [:]
@@ -182,7 +187,24 @@ private struct ARRealityContainerView: UIViewRepresentable {
             self.arView = arView
             let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
             arView.addGestureRecognizer(tap)
+            tapGestureRecognizer = tap
             startDisplayLink()
+        }
+
+        func detach(from arView: ARView) {
+            stopDisplayLink()
+            if let tapGestureRecognizer {
+                arView.removeGestureRecognizer(tapGestureRecognizer)
+                self.tapGestureRecognizer = nil
+            }
+            clearModelIfNeeded()
+            postCards.values.forEach { $0.view.removeFromSuperview() }
+            postCards.removeAll()
+            postAnchors.values.forEach { $0.removeFromParent() }
+            postAnchors.removeAll()
+            smoothedCardFrames.removeAll()
+            arView.session.pause()
+            self.arView = nil
         }
 
         func clearModelIfNeeded() {
@@ -269,6 +291,11 @@ private struct ARRealityContainerView: UIViewRepresentable {
             let link = CADisplayLink(target: self, selector: #selector(onDisplayTick))
             link.add(to: .main, forMode: .common)
             displayLink = link
+        }
+
+        private func stopDisplayLink() {
+            displayLink?.invalidate()
+            displayLink = nil
         }
 
         @objc
@@ -502,7 +529,7 @@ private struct ARRealityContainerView: UIViewRepresentable {
         }
 
         deinit {
-            displayLink?.invalidate()
+            stopDisplayLink()
             postCards.values.forEach { $0.view.removeFromSuperview() }
             postCards.removeAll()
             postAnchors.values.forEach { $0.removeFromParent() }
@@ -557,6 +584,7 @@ private final class ARCameraViewModel: ObservableObject {
     private let maxCatchHorizontalAccuracy: CLLocationAccuracy = 15
     private var arAdminConfigCache: ARAdminConfiguration = .default
     private var lastARAdminConfigFetch: Date?
+    private var photoURLCache: [String: URL] = [:]
 
     var shouldRenderPostOverlays: Bool {
         contentMode == .posts || (contentMode == .character && showPostsInCharacter)
@@ -977,9 +1005,7 @@ private final class ARCameraViewModel: ObservableObject {
                 let firstPath = photoPaths.first
                     ?? (data["photoPath"] as? String)
                     ?? (data["imagePath"] as? String)
-                let firstPhotoURL = firstPath.flatMap { path in
-                    try? storageDownloadURL(for: path)
-                }
+                let firstPhotoURL = firstPath.flatMap(cachedStorageDownloadURL(for:))
                 let emojiPin = (data["emojiPin"] as? String)?
                     .trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -1050,6 +1076,17 @@ private final class ARCameraViewModel: ObservableObject {
             lastARAdminConfigFetch = nil
             return arAdminConfigCache
         }
+    }
+
+    private func cachedStorageDownloadURL(for path: String) -> URL? {
+        if let cached = photoURLCache[path] {
+            return cached
+        }
+        guard let resolved = try? storageDownloadURL(for: path) else {
+            return nil
+        }
+        photoURLCache[path] = resolved
+        return resolved
     }
 
     private func parsePostDate(_ data: [String: Any]) -> Date? {
