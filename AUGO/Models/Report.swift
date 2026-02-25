@@ -30,6 +30,10 @@ struct Report: Codable, Identifiable {
         case harassment
         case inappropriate
         case misinformation
+        case scam
+        case threat
+        case impersonation
+        case hates
         case other
     }
     

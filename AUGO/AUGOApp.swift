@@ -40,16 +40,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         print("❌ Failed to register for remote notifications: \(error)")
     }
 
-    // Required when FirebaseAppDelegateProxyEnabled is false.
-    // Handles OAuth callback URLs (Microsoft, Google, etc.) and hands them to Firebase/Auth SDKs.
-    func application(_ app: UIApplication,
-                     open url: URL,
-                     options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
-        if Auth.auth().canHandle(url) {
-            return true
-        }
-        return GIDSignIn.sharedInstance.handle(url)
-    }
 }
 
 @main

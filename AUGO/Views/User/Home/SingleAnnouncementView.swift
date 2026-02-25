@@ -16,7 +16,7 @@ struct SingleAnnouncementView: View {
     @State private var userReaction: String?
     @State private var localLikeCount: Int
     @State private var localDislikeCount: Int
-    @State private var reactionMessage: String?
+    @State private var rewardClaimed = false
 
     init(announcement: Announcement) {
         self.announcement = announcement
@@ -30,10 +30,6 @@ struct SingleAnnouncementView: View {
 
     private var canReact: Bool {
         authManager.user?.uid != nil
-    }
-
-    private var canReactForCoins: Bool {
-        authManager.role == .user
     }
 
     var body: some View {
@@ -173,7 +169,7 @@ struct SingleAnnouncementView: View {
                     if canReact {
                         HStack(spacing: 12) {
                             Button {
-                                Task { await applyReaction("like") }
+                                // Reactions are disabled in map detail to keep reward interactions AR-only.
                             } label: {
                                 HStack {
                                     Image(systemName: userReaction == "like" ? "hand.thumbsup.fill" : "hand.thumbsup")
@@ -186,9 +182,11 @@ struct SingleAnnouncementView: View {
                                 .foregroundColor(userReaction == "like" ? .white : .green)
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                             }
+                            .disabled(true)
+                            .opacity(0.7)
 
                             Button {
-                                Task { await applyReaction("dislike") }
+                                // Reactions are disabled in map detail to keep reward interactions AR-only.
                             } label: {
                                 HStack {
                                     Image(systemName: userReaction == "dislike" ? "hand.thumbsdown.fill" : "hand.thumbsdown")
@@ -201,12 +199,18 @@ struct SingleAnnouncementView: View {
                                 .foregroundColor(userReaction == "dislike" ? .white : .orange)
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                             }
+                            .disabled(true)
+                            .opacity(0.7)
                         }
 
-                        if let reactionMessage {
-                            Text(reactionMessage)
+                        if rewardClaimed {
+                            Text("Reward claimed. You already received this announcement reward.")
                                 .font(.caption)
                                 .foregroundColor(Color.Brand.coin)
+                        } else {
+                            Text("Interact with this announcement in AR to earn reward coins.")
+                                .font(.caption)
+                                .foregroundColor(Color.Brand.primary)
                         }
                     }
                 }
@@ -217,7 +221,10 @@ struct SingleAnnouncementView: View {
                     startListener()
                 }
                 if canReact {
-                    Task { await loadUserReaction() }
+                    Task {
+                        await loadUserReaction()
+                        await loadRewardClaimStatus()
+                    }
                 }
             }
             .onDisappear {
@@ -340,26 +347,16 @@ struct SingleAnnouncementView: View {
         }
     }
 
-    @MainActor
-    private func applyReaction(_ reaction: String) async {
+    private func loadRewardClaimStatus() async {
         guard let uid = authManager.user?.uid else { return }
         do {
-            let result = try await announcementManager.reactToAnnouncement(
-                announcementId: announcement.id,
-                userId: uid,
-                reaction: reaction,
-                awardCoin: canReactForCoins
-            )
-            userReaction = result.reaction
-            localLikeCount = result.likeCount
-            localDislikeCount = result.dislikeCount
-            if result.coinAwarded > 0 {
-                reactionMessage = String(format: "Thanks for engaging. You earned +%.1f coin.", result.coinAwarded)
-            } else {
-                reactionMessage = nil
+            let userSnapshot = try await Firestore.firestore().collection("users").document(uid).getDocument()
+            let rewardMap = userSnapshot.data()?["announcementReactionRewards"] as? [String: Bool] ?? [:]
+            await MainActor.run {
+                rewardClaimed = rewardMap[announcement.id] ?? false
             }
         } catch {
-            reactionMessage = "Reaction failed: \(error.localizedDescription)"
+            // Non-fatal.
         }
     }
 

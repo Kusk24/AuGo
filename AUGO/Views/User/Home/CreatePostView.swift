@@ -47,6 +47,17 @@ struct CreatePostView: View {
     private var accountPostingRestriction: String? {
         authManager.postingRestrictionMessage
     }
+
+    private var accountRestrictionTint: Color {
+        switch authManager.userProfile?.status {
+        case .banned:
+            return .red
+        case .suspended:
+            return .orange
+        default:
+            return .red
+        }
+    }
     
     private var userAvatar: String {
         if let nickname = authManager.userProfile?.nickname {
@@ -153,14 +164,17 @@ struct CreatePostView: View {
 
                     if let accountPostingRestriction {
                         HStack(spacing: 8) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(.red)
+                            Image(systemName: "shield.lefthalf.filled.slash")
+                                .foregroundColor(accountRestrictionTint)
                             Text(accountPostingRestriction)
-                                .font(.caption)
-                                .foregroundColor(.red)
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(accountRestrictionTint)
                             Spacer()
                         }
-                        .padding(.horizontal, 4)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(accountRestrictionTint.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
 
                     ZStack(alignment: .topLeading) {
@@ -426,8 +440,17 @@ struct CreatePostView: View {
             isPresentedFromHome = false
             isSubmitting = false
             
+        } catch let creationError as PostManager.PostCreationError {
+            alertMessage = creationError.localizedDescription
+            showAlert = true
+            isSubmitting = false
         } catch {
-            alertMessage = "Failed to create post: \(error.localizedDescription)"
+            let errorText = (error as NSError).localizedDescription
+            if errorText.localizedCaseInsensitiveContains("missing or insufficient permissions") {
+                alertMessage = "You cannot create a post right now due to account restrictions."
+            } else {
+                alertMessage = "Failed to create post: \(errorText)"
+            }
             showAlert = true
             isSubmitting = false
         }

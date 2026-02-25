@@ -1084,6 +1084,14 @@ class PostManager: ObservableObject {
                 description = "Offensive, explicit, or inappropriate content"
             case .misinformation:
                 description = "False or misleading information"
+            case .scam:
+                description = "Fraudulent or deceptive content"
+            case .threat:
+                description = "Threatening or violent content"
+            case .impersonation:
+                description = "Pretending to be someone else"
+            case .hates:
+                description = "Hateful or discriminatory content"
             case .other:
                 description = "Other violations of community guidelines"
             }

@@ -64,6 +64,16 @@ struct CampusMapView: View {
     @State private var displayClusters: [PostCluster] = []
     @State private var arSpawnDots: [ARSpawnMapDot] = []
     @State private var arSpawnsListener: ListenerRegistration?
+
+    private var defaultMapRegion: MKCoordinateRegion {
+        MKCoordinateRegion(
+            center: viewModel.campusRegion.center,
+            span: MKCoordinateSpan(
+                latitudeDelta: viewModel.campusRegion.span.latitudeDelta * 1.15,
+                longitudeDelta: viewModel.campusRegion.span.longitudeDelta * 1.15
+            )
+        )
+    }
     
     private func updateClustersAndMapping(posts: [Post]? = nil) {
         let postsToUse = posts ?? postManager.allPosts
@@ -291,6 +301,12 @@ struct CampusMapView: View {
         Button("Spam") { reportPost(category: .spam) }
         Button("Harassment") { reportPost(category: .harassment) }
         Button("Inappropriate") { reportPost(category: .inappropriate) }
+        Button("Misinformation") { reportPost(category: .misinformation) }
+        Button("Scam") { reportPost(category: .scam) }
+        Button("Threat / Violence") { reportPost(category: .threat) }
+        Button("Impersonation") { reportPost(category: .impersonation) }
+        Button("Hate Speech") { reportPost(category: .hates) }
+        Button("Other") { reportPost(category: .other) }
         Button("Cancel", role: .cancel) {}
     }
     
@@ -680,7 +696,7 @@ struct CampusMapView: View {
             }
         }
         .onAppear {
-            cameraPosition = .region(viewModel.campusRegion)
+            cameraPosition = .region(defaultMapRegion)
             updateClustersAndMapping()
             startARSpawnsListener()
         }
@@ -783,6 +799,7 @@ struct CampusMapView: View {
                     )
                     .presentationDetents([PresentationDetent.medium, PresentationDetent.large])
                     .presentationDragIndicator(Visibility.visible)
+                    .presentationBackground(Color.Brand.appBackground)
                     .alert("Report Post", isPresented: $showReportAlert) {
                         reportAlertButtons
                     } message: {

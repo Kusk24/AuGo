@@ -35,6 +35,27 @@ struct CreatePostMapView: View {
         authManager.postingRestrictionMessage
     }
 
+    private var accountRestrictionTint: Color {
+        switch authManager.userProfile?.status {
+        case .banned:
+            return .red
+        case .suspended:
+            return .orange
+        default:
+            return .red
+        }
+    }
+
+    private var defaultMapRegion: MKCoordinateRegion {
+        MKCoordinateRegion(
+            center: mapViewModel.campusRegion.center,
+            span: MKCoordinateSpan(
+                latitudeDelta: mapViewModel.campusRegion.span.latitudeDelta * 1.15,
+                longitudeDelta: mapViewModel.campusRegion.span.longitudeDelta * 1.15
+            )
+        )
+    }
+
     var body: some View {
         ZStack {
             Color.Brand.appBackground
@@ -100,13 +121,17 @@ struct CreatePostMapView: View {
 
                 if let accountPostingRestriction {
                     HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.red)
+                        Image(systemName: "shield.lefthalf.filled.slash")
+                            .foregroundColor(accountRestrictionTint)
                         Text(accountPostingRestriction)
-                            .font(.caption)
-                            .foregroundColor(.red)
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(accountRestrictionTint)
                         Spacer()
                     }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(accountRestrictionTint.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .padding(.horizontal)
                 }
 
@@ -135,7 +160,7 @@ struct CreatePostMapView: View {
             }
         }
         .onAppear {
-            cameraPosition = .region(mapViewModel.campusRegion)
+            cameraPosition = .region(defaultMapRegion)
             if let userId = authManager.user?.uid {
                 Task {
                     await postManager.refreshUserEconomy(userId: userId)
@@ -181,8 +206,17 @@ struct CreatePostMapView: View {
             dismiss()
             isSubmitting = false
             
+        } catch let creationError as PostManager.PostCreationError {
+            alertMessage = creationError.localizedDescription
+            showAlert = true
+            isSubmitting = false
         } catch {
-            alertMessage = "Failed to create post: \(error.localizedDescription)"
+            let errorText = (error as NSError).localizedDescription
+            if errorText.localizedCaseInsensitiveContains("missing or insufficient permissions") {
+                alertMessage = "You cannot create a post right now due to account restrictions."
+            } else {
+                alertMessage = "Failed to create post: \(errorText)"
+            }
             showAlert = true
             isSubmitting = false
         }

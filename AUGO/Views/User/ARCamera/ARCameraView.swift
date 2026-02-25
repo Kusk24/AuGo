@@ -26,6 +26,13 @@ struct ARCameraView: View {
                 renderSpawnID: viewModel.renderSpawnID,
                 characterScale: viewModel.characterVisualScale,
                 nearbyPosts: viewModel.shouldRenderPostOverlays ? viewModel.nearbyPosts : [],
+                nearbyAnnouncements: viewModel.shouldRenderPostOverlays ? viewModel.nearbyAnnouncements : [],
+                onAnnouncementLike: { announcementID in
+                    viewModel.reactToAnnouncement(announcementID: announcementID, reaction: "like")
+                },
+                onAnnouncementDislike: { announcementID in
+                    viewModel.reactToAnnouncement(announcementID: announcementID, reaction: "dislike")
+                },
                 onCapture: {
                     viewModel.captureCurrentSpawn()
                 }
@@ -124,6 +131,9 @@ private struct ARRealityContainerView: UIViewRepresentable {
     let renderSpawnID: String?
     let characterScale: CGFloat
     let nearbyPosts: [ARNearbyPost]
+    let nearbyAnnouncements: [ARNearbyAnnouncement]
+    let onAnnouncementLike: (String) -> Void
+    let onAnnouncementDislike: (String) -> Void
     let onCapture: () -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -150,7 +160,10 @@ private struct ARRealityContainerView: UIViewRepresentable {
 
     func updateUIView(_ arView: ARView, context: Context) {
         context.coordinator.onCapture = onCapture
+        context.coordinator.onAnnouncementLike = onAnnouncementLike
+        context.coordinator.onAnnouncementDislike = onAnnouncementDislike
         context.coordinator.updateFloatingPosts(nearbyPosts)
+        context.coordinator.updateFloatingAnnouncements(nearbyAnnouncements)
         context.coordinator.updateCharacterScale(Float(characterScale))
 
         guard shouldRenderModel, let modelEntity else {
@@ -171,12 +184,17 @@ private struct ARRealityContainerView: UIViewRepresentable {
         private var postAnchors: [String: AnchorEntity] = [:]
         private var postCards: [String: UIHostingController<ARNearbyPostCard>] = [:]
         private var postPriority: [String: Int] = [:]
+        private var announcementAnchors: [String: AnchorEntity] = [:]
+        private var announcementCards: [String: UIHostingController<ARNearbyAnnouncementCard>] = [:]
+        private var announcementPriority: [String: Int] = [:]
         private var postLayoutSeed: simd_float4x4?
         private var smoothedCardFrames: [String: CGRect] = [:]
         private var displayLink: CADisplayLink?
         private let floatingStartTime = CACurrentMediaTime()
         private let postFloatAmplitude: CGFloat = 13.0
         private let postFloatFrequencyHz: Double = 0.595
+        var onAnnouncementLike: (String) -> Void = { _ in }
+        var onAnnouncementDislike: (String) -> Void = { _ in }
         var onCapture: () -> Void
 
         init(onCapture: @escaping () -> Void) {
@@ -202,6 +220,10 @@ private struct ARRealityContainerView: UIViewRepresentable {
             postCards.removeAll()
             postAnchors.values.forEach { $0.removeFromParent() }
             postAnchors.removeAll()
+            announcementCards.values.forEach { $0.view.removeFromSuperview() }
+            announcementCards.removeAll()
+            announcementAnchors.values.forEach { $0.removeFromParent() }
+            announcementAnchors.removeAll()
             smoothedCardFrames.removeAll()
             arView.session.pause()
             self.arView = nil
@@ -231,7 +253,7 @@ private struct ARRealityContainerView: UIViewRepresentable {
                 postCards[existingID]?.view.removeFromSuperview()
                 postCards.removeValue(forKey: existingID)
             }
-            if postAnchors.isEmpty {
+            if postAnchors.isEmpty && announcementAnchors.isEmpty {
                 postLayoutSeed = arView.cameraTransform.matrix
             }
 
@@ -250,6 +272,58 @@ private struct ARRealityContainerView: UIViewRepresentable {
                 host.view.frame = CGRect(x: 0, y: 0, width: 230, height: 180)
                 arView.addSubview(host.view)
                 postCards[post.id] = host
+            }
+
+            updateFloatingPostScreenPositions()
+        }
+
+        func updateFloatingAnnouncements(_ announcements: [ARNearbyAnnouncement]) {
+            guard let arView else { return }
+            let baseIndex = postAnchors.count
+            announcementPriority = Dictionary(uniqueKeysWithValues: announcements.enumerated().map { ($0.element.id, baseIndex + $0.offset) })
+            if postLayoutSeed == nil {
+                postLayoutSeed = arView.cameraTransform.matrix
+            }
+
+            let activeIDs = Set(announcements.map(\.id))
+            for existingID in announcementAnchors.keys where !activeIDs.contains(existingID) {
+                announcementAnchors[existingID]?.removeFromParent()
+                announcementAnchors.removeValue(forKey: existingID)
+                smoothedCardFrames.removeValue(forKey: "announcement_\(existingID)")
+
+                announcementCards[existingID]?.view.removeFromSuperview()
+                announcementCards.removeValue(forKey: existingID)
+            }
+            if postAnchors.isEmpty && announcementAnchors.isEmpty {
+                postLayoutSeed = arView.cameraTransform.matrix
+            }
+
+            let total = max(announcements.count + postAnchors.count, 1)
+            for (index, announcement) in announcements.enumerated() {
+                if let host = announcementCards[announcement.id] {
+                    host.rootView = ARNearbyAnnouncementCard(
+                        announcement: announcement,
+                        onLike: { self.onAnnouncementLike(announcement.id) },
+                        onDislike: { self.onAnnouncementDislike(announcement.id) }
+                    )
+                    continue
+                }
+
+                let anchor = AnchorEntity(world: floatingPostPosition(index: index + postAnchors.count, total: total, arView: arView))
+                arView.scene.addAnchor(anchor)
+                announcementAnchors[announcement.id] = anchor
+
+                let host = UIHostingController(
+                    rootView: ARNearbyAnnouncementCard(
+                        announcement: announcement,
+                        onLike: { self.onAnnouncementLike(announcement.id) },
+                        onDislike: { self.onAnnouncementDislike(announcement.id) }
+                    )
+                )
+                host.view.backgroundColor = .clear
+                host.view.frame = CGRect(x: 0, y: 0, width: 240, height: 210)
+                arView.addSubview(host.view)
+                announcementCards[announcement.id] = host
             }
 
             updateFloatingPostScreenPositions()
@@ -315,12 +389,15 @@ private struct ARRealityContainerView: UIViewRepresentable {
             let cameraPosition = SIMD3<Float>(cameraTransform.columns.3.x, cameraTransform.columns.3.y, cameraTransform.columns.3.z)
             let cameraForward = simd_normalize(-SIMD3<Float>(cameraTransform.columns.2.x, cameraTransform.columns.2.y, cameraTransform.columns.2.z))
 
-            let sortedIDs = postAnchors.keys.sorted {
+            let sortedPostIDs = postAnchors.keys.sorted {
                 (postPriority[$0] ?? .max) < (postPriority[$1] ?? .max)
+            }
+            let sortedAnnouncementIDs = announcementAnchors.keys.sorted {
+                (announcementPriority[$0] ?? .max) < (announcementPriority[$1] ?? .max)
             }
 
             var preferredFrames: [(id: String, frame: CGRect)] = []
-            for id in sortedIDs {
+            for id in sortedPostIDs {
                 guard let anchor = postAnchors[id] else { continue }
                 guard let host = postCards[id] else { continue }
                 let worldPosition = anchor.position(relativeTo: nil)
@@ -357,12 +434,64 @@ private struct ARRealityContainerView: UIViewRepresentable {
                 )
                 preferredFrames.append((id: id, frame: frame))
             }
+            for id in sortedAnnouncementIDs {
+                guard let anchor = announcementAnchors[id] else { continue }
+                guard let host = announcementCards[id] else { continue }
+                let worldPosition = anchor.position(relativeTo: nil)
+                let toPost = worldPosition - cameraPosition
+                let distance = simd_length(toPost)
+                guard distance > 0.001 else {
+                    host.view.isHidden = true
+                    continue
+                }
+                let facing = simd_dot(simd_normalize(toPost), cameraForward)
+                if facing < 0.25 {
+                    host.view.isHidden = true
+                    continue
+                }
+                guard let projected = arView.project(worldPosition) else {
+                    host.view.isHidden = true
+                    continue
+                }
+                if !visibilityBounds.contains(CGPoint(x: projected.x, y: projected.y)) {
+                    host.view.isHidden = true
+                    continue
+                }
+
+                let angularVelocity = postFloatFrequencyHz * 2.0 * Double.pi
+                let bob = CGFloat(sin(t * angularVelocity) * postFloatAmplitude)
+                let size = host.view.bounds.size == .zero ? CGSize(width: 240, height: 210) : host.view.bounds.size
+                let frame = CGRect(
+                    x: projected.x - (size.width / 2),
+                    y: projected.y + bob - (size.height / 2),
+                    width: size.width,
+                    height: size.height
+                )
+                preferredFrames.append((id: "announcement_\(id)", frame: frame))
+            }
 
             // Resolve collisions aggressively so cards remain readable even in dense clusters.
             let resolvedFrames = separateOverlaps(preferredFrames, in: bounds)
 
             for (rank, item) in resolvedFrames.enumerated() {
-                guard let host = postCards[item.id] else { continue }
+                if let host = postCards[item.id] {
+                    host.view.isHidden = false
+                    let previous = smoothedCardFrames[item.id] ?? item.frame
+                    let smoothed = CGRect(
+                        x: previous.origin.x + (item.frame.origin.x - previous.origin.x) * 0.32,
+                        y: previous.origin.y + (item.frame.origin.y - previous.origin.y) * 0.5,
+                        width: item.frame.width,
+                        height: item.frame.height
+                    )
+                    let clamped = clamp(smoothed, to: bounds)
+                    smoothedCardFrames[item.id] = clamped
+                    host.view.frame = clamped
+                    host.view.alpha = rank < 3 ? 1.0 : 0.92
+                    continue
+                }
+                guard item.id.hasPrefix("announcement_") else { continue }
+                let announcementID = String(item.id.dropFirst("announcement_".count))
+                guard let host = announcementCards[announcementID] else { continue }
                 host.view.isHidden = false
                 let previous = smoothedCardFrames[item.id] ?? item.frame
                 let smoothed = CGRect(
@@ -374,13 +503,15 @@ private struct ARRealityContainerView: UIViewRepresentable {
                 let clamped = clamp(smoothed, to: bounds)
                 smoothedCardFrames[item.id] = clamped
                 host.view.frame = clamped
-                // Keep nearest cards slightly more prominent without hiding others.
                 host.view.alpha = rank < 3 ? 1.0 : 0.92
             }
 
             // Hide cards that were not visible in this tick.
             let visibleIDs = Set(resolvedFrames.map(\.id))
             for (id, host) in postCards where !visibleIDs.contains(id) {
+                host.view.isHidden = true
+            }
+            for (id, host) in announcementCards where !visibleIDs.contains("announcement_\(id)") {
                 host.view.isHidden = true
             }
         }
@@ -534,6 +665,10 @@ private struct ARRealityContainerView: UIViewRepresentable {
             postCards.removeAll()
             postAnchors.values.forEach { $0.removeFromParent() }
             postAnchors.removeAll()
+            announcementCards.values.forEach { $0.view.removeFromSuperview() }
+            announcementCards.removeAll()
+            announcementAnchors.values.forEach { $0.removeFromParent() }
+            announcementAnchors.removeAll()
         }
     }
 }
@@ -544,7 +679,7 @@ private final class ARCameraViewModel: ObservableObject {
         let postVisibilityDurationHours: Int
 
         static let `default` = ARAdminConfiguration(
-            postVisibleRangeMeters: 30,
+            postVisibleRangeMeters: 50,
             postVisibilityDurationHours: 24
         )
     }
@@ -562,6 +697,7 @@ private final class ARCameraViewModel: ObservableObject {
     @Published var catchInstructionText = "Get inside catch radius to start combo"
     @Published var characterRangeText = "Character range: 100 m"
     @Published var nearbyPosts: [ARNearbyPost] = []
+    @Published var nearbyAnnouncements: [ARNearbyAnnouncement] = []
     @Published var showPostsInCharacter = false
 
     private let locationManager = LocationManager()
@@ -585,6 +721,9 @@ private final class ARCameraViewModel: ObservableObject {
     private var arAdminConfigCache: ARAdminConfiguration = .default
     private var lastARAdminConfigFetch: Date?
     private var photoURLCache: [String: URL] = [:]
+    private var reactingAnnouncementIDs: Set<String> = []
+    private var announcementRewardClaimedMap: [String: Bool] = [:]
+    private var announcementUserReactionMap: [String: String] = [:]
 
     var shouldRenderPostOverlays: Bool {
         contentMode == .posts || (contentMode == .character && showPostsInCharacter)
@@ -621,6 +760,7 @@ private final class ARCameraViewModel: ObservableObject {
             } else {
                 nearbyPostsMonitorTask?.cancel()
                 nearbyPosts = []
+                nearbyAnnouncements = []
             }
             smoothedDistanceMeters = nil
             loadSpawnTask?.cancel()
@@ -655,6 +795,51 @@ private final class ARCameraViewModel: ObservableObject {
         } else {
             nearbyPostsMonitorTask?.cancel()
             nearbyPosts = []
+            nearbyAnnouncements = []
+        }
+    }
+
+    func reactToAnnouncement(announcementID: String, reaction: String) {
+        guard reaction == "like" || reaction == "dislike" else { return }
+        guard let userID = auth.currentUser?.uid else {
+            errorText = "Sign in to react to announcements."
+            return
+        }
+        guard !reactingAnnouncementIDs.contains(announcementID) else { return }
+        reactingAnnouncementIDs.insert(announcementID)
+
+        Task { @MainActor in
+            defer { reactingAnnouncementIDs.remove(announcementID) }
+            do {
+                let announcementManager = AnnouncementManager()
+                let result = try await announcementManager.reactToAnnouncement(
+                    announcementId: announcementID,
+                    userId: userID,
+                    reaction: reaction,
+                    awardCoin: true
+                )
+                if let index = nearbyAnnouncements.firstIndex(where: { $0.id == announcementID }) {
+                    nearbyAnnouncements[index].likeCount = result.likeCount
+                    nearbyAnnouncements[index].dislikeCount = result.dislikeCount
+                    nearbyAnnouncements[index].userReaction = result.reaction
+                    if result.coinAwarded > 0 {
+                        nearbyAnnouncements[index].rewardClaimed = true
+                    }
+                }
+                if let reaction = result.reaction {
+                    announcementUserReactionMap[announcementID] = reaction
+                } else {
+                    announcementUserReactionMap.removeValue(forKey: announcementID)
+                }
+                if result.coinAwarded > 0 {
+                    statusText = String(format: "Reaction saved. +%.1f coins", result.coinAwarded)
+                    announcementRewardClaimedMap[announcementID] = true
+                } else {
+                    statusText = "Reaction saved. Reward was already claimed."
+                }
+            } catch {
+                errorText = "Failed reacting to announcement: \(error.localizedDescription)"
+            }
         }
     }
 
@@ -975,14 +1160,20 @@ private final class ARCameraViewModel: ObservableObject {
 
         guard let userLocation = locationManager.lastLocation else {
             nearbyPosts = []
+            nearbyAnnouncements = []
             return
         }
 
         do {
-            let snapshot = try await db.collection("posts")
+            async let postSnapshotTask = db.collection("posts")
                 .whereField("status", isEqualTo: "active")
                 .limit(to: 60)
                 .getDocuments()
+            async let announcementSnapshotTask = db.collection("announcements")
+                .limit(to: 60)
+                .getDocuments()
+
+            let (snapshot, announcementSnapshot) = try await (postSnapshotTask, announcementSnapshotTask)
 
             let mapped = snapshot.documents.compactMap { doc -> ARNearbyPost? in
                 let data = doc.data()
@@ -1028,14 +1219,97 @@ private final class ARCameraViewModel: ObservableObject {
                 .prefix(8)
                 .map { $0 }
 
+            if let userID = auth.currentUser?.uid {
+                do {
+                    let userSnapshot = try await db.collection("users").document(userID).getDocument()
+                    announcementRewardClaimedMap = userSnapshot.data()?["announcementReactionRewards"] as? [String: Bool] ?? [:]
+                } catch {
+                    announcementRewardClaimedMap = [:]
+                }
+                do {
+                    let reactionSnapshot = try await db.collection("announcement_reactions")
+                        .whereField("userId", isEqualTo: userID)
+                        .limit(to: 200)
+                        .getDocuments()
+                    announcementUserReactionMap = Dictionary(
+                        uniqueKeysWithValues: reactionSnapshot.documents.compactMap { doc in
+                            let data = doc.data()
+                            guard
+                                let announcementID = data["announcementId"] as? String,
+                                let reaction = data["reaction"] as? String
+                            else { return nil }
+                            return (announcementID, reaction)
+                        }
+                    )
+                } catch {
+                    announcementUserReactionMap = [:]
+                }
+            } else {
+                announcementRewardClaimedMap = [:]
+                announcementUserReactionMap = [:]
+            }
+
+            let now = Date()
+            let mappedAnnouncements = announcementSnapshot.documents.compactMap { doc -> ARNearbyAnnouncement? in
+                let data = doc.data()
+                guard
+                    let title = data["title"] as? String,
+                    let body = data["body"] as? String,
+                    let lat = toDouble(data["latitude"]),
+                    let lon = toDouble(data["longitude"]),
+                    let statusRaw = data["status"] as? String,
+                    let status = AnnouncementStatus.fromFirestore(statusRaw)
+                else { return nil }
+
+                let startDate = (data["startDate"] as? Timestamp)?.dateValue()
+                    ?? (data["createdAt"] as? Timestamp)?.dateValue()
+                    ?? now
+                let endDate = (data["endDate"] as? Timestamp)?.dateValue()
+                    ?? Calendar.current.date(byAdding: .day, value: 1, to: startDate)
+                    ?? startDate
+                guard status == .active, startDate <= now, now <= endDate else {
+                    return nil
+                }
+
+                let distance = CLLocation(latitude: lat, longitude: lon).distance(from: userLocation)
+                let photoPaths = data["photoPaths"] as? [String] ?? []
+                let firstPhotoURL = photoPaths.first.flatMap(cachedStorageDownloadURL(for:))
+                let coinReward = (data["coinReward"] as? Double)
+                    ?? (data["coinReward"] as? NSNumber)?.doubleValue
+                    ?? 0.2
+
+                return ARNearbyAnnouncement(
+                    id: doc.documentID,
+                    title: title,
+                    body: body,
+                    likeCount: intValue(data["likeCount"]),
+                    dislikeCount: intValue(data["dislikeCount"]),
+                    distanceMeters: distance,
+                    coinReward: max(0, coinReward),
+                    isUrgent: data["isUrgent"] as? Bool ?? false,
+                    firstPhotoURL: firstPhotoURL,
+                    userReaction: announcementUserReactionMap[doc.documentID],
+                    rewardClaimed: announcementRewardClaimedMap[doc.documentID] ?? false
+                )
+            }
+
+            nearbyAnnouncements = mappedAnnouncements
+                .filter { $0.distanceMeters <= visibleRange }
+                .sorted { $0.distanceMeters < $1.distanceMeters }
+                .prefix(6)
+                .map { $0 }
+
             if contentMode == .posts {
                 titleText = "Nearby Posts"
-                statusText = "Posts in range: \(nearbyPosts.count)"
+                statusText = "Posts: \(nearbyPosts.count) • Announcements: \(nearbyAnnouncements.count)"
                 if let nearest = nearbyPosts.first {
                     let caption = nearest.message.trimmingCharacters(in: .whitespacesAndNewlines)
                     let preview = caption.isEmpty ? "Untitled post" : String(caption.prefix(36))
                     rewardInfoText = "Nearest: \(preview)"
                     distanceText = String(format: "Distance: %.1f m", nearest.distanceMeters)
+                } else if let nearestAnnouncement = nearbyAnnouncements.first {
+                    rewardInfoText = "Nearest announcement: \(String(nearestAnnouncement.title.prefix(32)))"
+                    distanceText = String(format: "Distance: %.1f m", nearestAnnouncement.distanceMeters)
                 } else {
                     rewardInfoText = "Nearest: none"
                     distanceText = nil
@@ -1044,6 +1318,7 @@ private final class ARCameraViewModel: ObservableObject {
         } catch {
             // Keep AR usable even if post fetch fails.
             nearbyPosts = []
+            nearbyAnnouncements = []
             if contentMode == .posts {
                 titleText = "Nearby Posts"
                 statusText = "Posts in range: 0"
@@ -1484,6 +1759,20 @@ private struct ARNearbyPost: Identifiable {
     let proximityScale: CGFloat
 }
 
+private struct ARNearbyAnnouncement: Identifiable {
+    let id: String
+    let title: String
+    let body: String
+    var likeCount: Int
+    var dislikeCount: Int
+    let distanceMeters: Double
+    let coinReward: Double
+    let isUrgent: Bool
+    let firstPhotoURL: URL?
+    var userReaction: String?
+    var rewardClaimed: Bool
+}
+
 private struct ARNearbyPostCard: View {
     let post: ARNearbyPost
 
@@ -1576,6 +1865,137 @@ private struct ARNearbyPostCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .scaleEffect(post.proximityScale)
         .animation(.easeOut(duration: 0.18), value: post.proximityScale)
+    }
+}
+
+private struct ARNearbyAnnouncementCard: View {
+    let announcement: ARNearbyAnnouncement
+    let onLike: () -> Void
+    let onDislike: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label(announcement.isUrgent ? "Urgent" : "Announcement", systemImage: "megaphone.fill")
+                    .font(.caption2.weight(.bold))
+                    .foregroundColor(announcement.isUrgent ? .red : .blue)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background((announcement.isUrgent ? Color.red : Color.blue).opacity(0.16))
+                    .clipShape(Capsule())
+                Spacer()
+                Label(String(format: "+%.1f", announcement.coinReward), systemImage: "bitcoinsign.circle.fill")
+                    .font(.caption2.weight(.bold))
+                    .foregroundColor(Color.Brand.coin)
+            }
+
+            Text(announcement.title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.white)
+                .lineLimit(1)
+
+            if let url = announcement.firstPhotoURL {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .empty:
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color.white.opacity(0.2))
+                            ProgressView()
+                        }
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .failure:
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color.white.opacity(0.2))
+                            Image(systemName: "photo")
+                                .foregroundColor(.white.opacity(0.8))
+                        }
+                    @unknown default:
+                        EmptyView()
+                    }
+                }
+                .frame(width: 224, height: 90)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+
+            Text(announcement.body)
+                .font(.footnote)
+                .foregroundColor(.white)
+                .lineLimit(2)
+
+            HStack(spacing: 6) {
+                if let userReaction = announcement.userReaction {
+                    Label(
+                        userReaction == "like" ? "You liked" : "You disliked",
+                        systemImage: userReaction == "like" ? "hand.thumbsup.fill" : "hand.thumbsdown.fill"
+                    )
+                    .font(.caption2.weight(.bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.white.opacity(0.18))
+                    .clipShape(Capsule())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+                }
+                Label(
+                    announcement.rewardClaimed ? "Reward claimed" : String(format: "Earn +%.1f", announcement.coinReward),
+                    systemImage: announcement.rewardClaimed ? "checkmark.seal.fill" : "bitcoinsign.circle.fill"
+                )
+                .font(.caption2.weight(.bold))
+                .foregroundColor(announcement.rewardClaimed ? Color.Brand.coin : .white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(announcement.rewardClaimed ? Color.Brand.coin.opacity(0.2) : Color.white.opacity(0.18))
+                .clipShape(Capsule())
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                Spacer()
+            }
+
+            HStack(spacing: 8) {
+                Button(action: onLike) {
+                    Label("\(announcement.likeCount)", systemImage: "hand.thumbsup.fill")
+                        .font(.caption.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                        .background(Color.green.opacity(0.2))
+                        .foregroundColor(.green)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                .buttonStyle(.plain)
+
+                Button(action: onDislike) {
+                    Label("\(announcement.dislikeCount)", systemImage: "hand.thumbsdown.fill")
+                        .font(.caption.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                        .background(Color.orange.opacity(0.2))
+                        .foregroundColor(.orange)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+
+            HStack {
+                Spacer()
+                Text(String(format: "%.0fm", announcement.distanceMeters))
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.white.opacity(0.9))
+            }
+        }
+        .padding(10)
+        .frame(width: 232, alignment: .leading)
+        .background(Color.blue.opacity(0.24))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.blue.opacity(0.55), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 

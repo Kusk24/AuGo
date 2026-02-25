@@ -7,6 +7,11 @@ struct LoginView: View {
         case student
         case announcer
     }
+
+    enum StudentProvider {
+        case google
+        case microsoft
+    }
     
     @EnvironmentObject var router: AppRouter
     @EnvironmentObject var authManager: AuthenticationManager
@@ -15,6 +20,7 @@ struct LoginView: View {
     @State private var announcerEmail = ""
     @State private var announcerPassword = ""
     @State private var announcerResetMessage: String?
+    @State private var activeStudentProvider: StudentProvider?
     
     var body: some View {
         NavigationStack {
@@ -45,11 +51,13 @@ struct LoginView: View {
                         VStack(spacing: 12) {
                             Button {
                                 Task {
+                                    activeStudentProvider = .google
                                     await authManager.signInWithGoogle()
+                                    activeStudentProvider = nil
                                 }
                             } label: {
                                 HStack(spacing: 12) {
-                                    if authManager.isLoading {
+                                    if authManager.isLoading && activeStudentProvider == .google {
                                         ProgressView()
                                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                     } else {
@@ -70,11 +78,13 @@ struct LoginView: View {
 
                             Button {
                                 Task {
+                                    activeStudentProvider = .microsoft
                                     await authManager.signInWithMicrosoft()
+                                    activeStudentProvider = nil
                                 }
                             } label: {
                                 HStack(spacing: 12) {
-                                    if authManager.isLoading {
+                                    if authManager.isLoading && activeStudentProvider == .microsoft {
                                         ProgressView()
                                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                     } else {
