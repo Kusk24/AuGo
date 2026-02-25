@@ -999,8 +999,8 @@ private final class ARCameraViewModel: ObservableObject {
             .whereField("isActive", isEqualTo: true)
             .getDocuments()
 
-        let spawns: [ARSpawn] = snapshot.documents.compactMap { doc in
-            ARSpawn(documentID: doc.documentID, data: doc.data())
+        let spawns = snapshot.documents.flatMap { doc in
+            ARSpawn.fromDocument(documentID: doc.documentID, data: doc.data())
         }
 
         guard !spawns.isEmpty else {
@@ -1441,7 +1441,7 @@ private final class ARCameraViewModel: ObservableObject {
     }
 
     private func eligibility(for spawn: ARSpawn, now: Date) -> ARCatchEligibility {
-        let progress = userCaptureProgress[spawn.id] ?? ARCaptureProgress(count: 0, lastCapturedAt: nil)
+        let progress = captureProgress(for: spawn)
         if progress.count >= spawn.catchableTime {
             return .limitReached(limit: spawn.catchableTime)
         }
@@ -1451,6 +1451,17 @@ private final class ARCameraViewModel: ObservableObject {
             return .cooldown(availableAt: next)
         }
         return .available
+    }
+
+    private func captureProgress(for spawn: ARSpawn) -> ARCaptureProgress {
+        if let exact = userCaptureProgress[spawn.id] {
+            return exact
+        }
+        if let legacyKey = spawn.legacyProgressKey,
+           let legacy = userCaptureProgress[legacyKey] {
+            return legacy
+        }
+        return ARCaptureProgress(count: 0, lastCapturedAt: nil)
     }
 
     private func persistCapture(for spawn: ARSpawn) async throws -> (newCount: Int, newBalance: Double) {
@@ -1476,7 +1487,12 @@ private final class ARCameraViewModel: ObservableObject {
                 var score = intValue(userData["score"])
 
                 var progressMap = userData["arCaptureProgress"] as? [String: [String: Any]] ?? [:]
-                let progressRaw = progressMap[spawn.id] ?? [:]
+                let progressRaw = progressMap[spawn.id] ?? {
+                    if let legacyKey = spawn.legacyProgressKey {
+                        return progressMap[legacyKey] ?? [:]
+                    }
+                    return [:]
+                }()
                 let previousCount = intValue(progressRaw["count"])
                 let lastCapturedAt = parseFirestoreDate(progressRaw["lastCapturedAt"])
 
@@ -1506,6 +1522,9 @@ private final class ARCameraViewModel: ObservableObject {
                     "count": newCount,
                     "lastCapturedAt": Timestamp(date: now)
                 ]
+                if let legacyKey = spawn.legacyProgressKey {
+                    progressMap.removeValue(forKey: legacyKey)
+                }
 
                 coinBalance += spawn.coinValue
                 score += spawn.pointValue
@@ -1517,6 +1536,7 @@ private final class ARCameraViewModel: ObservableObject {
 
                 var record: [String: Any] = [
                     "spawnId": spawn.id,
+                    "sourceSpawnId": spawn.sourceSpawnID,
                     "title": spawn.title,
                     "assetPath": spawn.assetPath,
                     "coinValue": spawn.coinValue,
@@ -1528,6 +1548,11 @@ private final class ARCameraViewModel: ObservableObject {
                 if let preview = spawn.preview {
                     record["preview"] = preview
                 }
+                if let locationName = spawn.locationName {
+                    record["locationName"] = locationName
+                }
+                record["latitude"] = spawn.lat
+                record["longitude"] = spawn.lon
                 if let nextCatchAt {
                     record["nextCatchAt"] = Timestamp(date: nextCatchAt)
                 }
@@ -1676,6 +1701,7 @@ private enum ARCatchEligibility {
 
 private struct ARSpawn {
     let id: String
+    let sourceSpawnID: String
     let title: String
     let assetPath: String
     let lat: Double
@@ -1688,36 +1714,108 @@ private struct ARSpawn {
     let catchableTime: Int
     let respawnDays: Int
     let preview: String?
+    let locationName: String?
+    let legacyProgressKey: String?
 
     var location: CLLocation {
         CLLocation(latitude: lat, longitude: lon)
     }
 
-    init?(documentID: String, data: [String: Any]) {
+    static func fromDocument(documentID: String, data: [String: Any]) -> [ARSpawn] {
         guard
             let title = (data["title"] as? String) ?? (data["name"] as? String),
             let assetPath = (data["assetPath"] as? String) ?? (data["modelPath"] as? String),
-            let lat = ARSpawn.toDouble(data["latitude"]),
-            let lon = ARSpawn.toDouble(data["longitude"]),
             let revealRadius = ARSpawn.toDouble(data["revealRadius"]),
             let catchRadius = ARSpawn.toDouble(data["catchRadius"])
         else {
-            return nil
+            return []
         }
 
-        self.id = documentID
+        let alt = ARSpawn.toDouble(data["alt"]) ?? 0
+        let coinValue = ARSpawn.toDouble(data["coin_value"]) ?? 0
+        let pointValue = ARSpawn.toInt(data["point"]) ?? 0
+        let catchableTime = max(1, ARSpawn.toInt(data["catchable_time"]) ?? 1)
+        let respawnDays = max(1, ARSpawn.toInt(data["respawn_days"]) ?? 1)
+        let preview = (data["preview"] as? String) ?? (data["previewPath"] as? String)
+        let fixedLocations = data["fixedLocations"] as? [[String: Any]] ?? []
+
+        var locations: [(lat: Double, lon: Double, name: String?, isPrimary: Bool)] = []
+        for entry in fixedLocations {
+            guard
+                let lat = ARSpawn.toDouble(entry["latitude"]),
+                let lon = ARSpawn.toDouble(entry["longitude"])
+            else { continue }
+            locations.append((lat, lon, entry["name"] as? String, false))
+        }
+
+        if locations.isEmpty,
+           let lat = ARSpawn.toDouble(data["latitude"]),
+           let lon = ARSpawn.toDouble(data["longitude"]) {
+            locations.append((lat, lon, data["name"] as? String, true))
+        }
+
+        return locations.map { location in
+            ARSpawn(
+                id: ARSpawn.locationScopedID(documentID: documentID, lat: location.lat, lon: location.lon),
+                sourceSpawnID: documentID,
+                title: title,
+                assetPath: assetPath,
+                lat: location.lat,
+                lon: location.lon,
+                alt: alt,
+                revealRadius: revealRadius,
+                catchRadius: catchRadius,
+                coinValue: coinValue,
+                pointValue: pointValue,
+                catchableTime: catchableTime,
+                respawnDays: respawnDays,
+                preview: preview,
+                locationName: location.name,
+                legacyProgressKey: location.isPrimary ? documentID : nil
+            )
+        }
+    }
+
+    private init(
+        id: String,
+        sourceSpawnID: String,
+        title: String,
+        assetPath: String,
+        lat: Double,
+        lon: Double,
+        alt: Double,
+        revealRadius: Double,
+        catchRadius: Double,
+        coinValue: Double,
+        pointValue: Int,
+        catchableTime: Int,
+        respawnDays: Int,
+        preview: String?,
+        locationName: String?,
+        legacyProgressKey: String?
+    ) {
+        self.id = id
+        self.sourceSpawnID = sourceSpawnID
         self.title = title
         self.assetPath = assetPath
         self.lat = lat
         self.lon = lon
-        self.alt = ARSpawn.toDouble(data["alt"]) ?? 0
+        self.alt = alt
         self.revealRadius = revealRadius
         self.catchRadius = catchRadius
-        self.coinValue = ARSpawn.toDouble(data["coin_value"]) ?? 0
-        self.pointValue = ARSpawn.toInt(data["point"]) ?? 0
-        self.catchableTime = max(1, ARSpawn.toInt(data["catchable_time"]) ?? 1)
-        self.respawnDays = max(1, ARSpawn.toInt(data["respawn_days"]) ?? 1)
-        self.preview = (data["preview"] as? String) ?? (data["previewPath"] as? String)
+        self.coinValue = coinValue
+        self.pointValue = pointValue
+        self.catchableTime = catchableTime
+        self.respawnDays = respawnDays
+        self.preview = preview
+        self.locationName = locationName
+        self.legacyProgressKey = legacyProgressKey
+    }
+
+    private static func locationScopedID(documentID: String, lat: Double, lon: Double) -> String {
+        let latString = String(format: "%.6f", lat)
+        let lonString = String(format: "%.6f", lon)
+        return "\(documentID)@\(latString),\(lonString)"
     }
 
     private static func toDouble(_ value: Any?) -> Double? {

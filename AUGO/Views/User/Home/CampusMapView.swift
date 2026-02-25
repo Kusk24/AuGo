@@ -599,20 +599,40 @@ struct CampusMapView: View {
                     return
                 }
 
-                self.arSpawnDots = documents.compactMap { doc in
+                self.arSpawnDots = documents.flatMap { doc in
                     let data = doc.data()
-                    guard
-                        let lat = self.toDouble(data["latitude"]),
-                        let lon = self.toDouble(data["longitude"])
-                    else { return nil }
+                    let title = (data["title"] as? String) ?? (data["name"] as? String) ?? "AR Spawn"
+                    let catchableTime = max(1, self.toInt(data["catchable_time"]) ?? 1)
+                    let symbol = ContentSymbolKit.arCharacterSymbol(for: title)
+                    let fixedLocations = data["fixedLocations"] as? [[String: Any]] ?? []
 
-                    return ARSpawnMapDot(
-                        id: doc.documentID,
-                        title: (data["title"] as? String) ?? "AR Spawn",
-                        coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon),
-                        catchableTime: max(1, self.toInt(data["catchable_time"]) ?? 1),
-                        symbol: ContentSymbolKit.arCharacterSymbol(for: (data["title"] as? String) ?? "AR Spawn")
-                    )
+                    let points: [(String, Double, Double)] = fixedLocations.compactMap { location in
+                        guard
+                            let lat = self.toDouble(location["latitude"]),
+                            let lon = self.toDouble(location["longitude"])
+                        else { return nil }
+                        let locationName = (location["name"] as? String) ?? "Location"
+                        return (locationName, lat, lon)
+                    }
+
+                    let resolvedPoints: [(String, Double, Double)]
+                    if points.isEmpty,
+                       let lat = self.toDouble(data["latitude"]),
+                       let lon = self.toDouble(data["longitude"]) {
+                        resolvedPoints = [(title, lat, lon)]
+                    } else {
+                        resolvedPoints = points
+                    }
+
+                    return resolvedPoints.map { point in
+                        ARSpawnMapDot(
+                            id: "\(doc.documentID)@\(String(format: "%.6f", point.1)),\(String(format: "%.6f", point.2))",
+                            title: point.0,
+                            coordinate: CLLocationCoordinate2D(latitude: point.1, longitude: point.2),
+                            catchableTime: catchableTime,
+                            symbol: symbol
+                        )
+                    }
                 }
             }
     }
