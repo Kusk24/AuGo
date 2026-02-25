@@ -55,31 +55,27 @@ struct AnnouncerProfileView: View {
                     .background(Color.Brand.surfaceMuted)
                     .clipShape(RoundedRectangle(cornerRadius: 16))
 
-                    Button {
-                        themeManager.toggleNightMode()
-                    } label: {
+                    VStack(alignment: .leading, spacing: 10) {
                         HStack {
-                            Label(
-                                themeManager.isNightModeEnabled ? "Night Theme: On" : "Night Theme: Off",
-                                systemImage: themeManager.isNightModeEnabled ? "moon.stars.fill" : "sun.max.fill"
-                            )
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundColor(.primary)
-
+                            Label("Theme", systemImage: themeManager.mode.iconName)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(.primary)
                             Spacer()
-
-                            Text("Switch")
-                                .font(.caption.weight(.bold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(Color.Brand.primary.opacity(0.15))
-                                .foregroundColor(Color.Brand.primary)
-                                .clipShape(Capsule())
                         }
-                        .padding()
-                        .background(Color.Brand.surfaceMuted)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
+
+                        Picker("Theme", selection: Binding(
+                            get: { themeManager.mode },
+                            set: { themeManager.setMode($0) }
+                        )) {
+                            ForEach(AppThemeMode.allCases) { mode in
+                                Text(mode.title).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
                     }
+                    .padding()
+                    .background(Color.Brand.surfaceMuted)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
                     
                     // SIGN OUT
                     Button(role: .destructive) {

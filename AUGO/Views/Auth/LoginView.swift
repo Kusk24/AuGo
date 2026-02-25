@@ -125,7 +125,7 @@ struct LoginView: View {
                                 .padding(.vertical, 12)
                                 .background(
                                     RoundedRectangle(cornerRadius: 12)
-                                        .fill(Color.white)
+                                        .fill(Color.Brand.surface)
                                 )
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12)
@@ -137,7 +137,7 @@ struct LoginView: View {
                                 .padding(.vertical, 12)
                                 .background(
                                     RoundedRectangle(cornerRadius: 12)
-                                        .fill(Color.white)
+                                        .fill(Color.Brand.surface)
                                 )
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12)

@@ -1,27 +1,81 @@
 import SwiftUI
 import Combine
 
+enum AppThemeMode: String, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .system: return "circle.lefthalf.filled"
+        case .light: return "sun.max.fill"
+        case .dark: return "moon.stars.fill"
+        }
+    }
+}
+
 @MainActor
 final class AppThemeManager: ObservableObject {
-    private let storageKey = "augo.theme.night_mode_enabled"
-    @Published private(set) var isNightModeEnabled: Bool
+    private let storageKey = "augo.theme.mode"
+    private let legacyStorageKey = "augo.theme.night_mode_enabled"
+    @Published private(set) var mode: AppThemeMode
 
     init() {
-        isNightModeEnabled = UserDefaults.standard.bool(forKey: storageKey)
+        if let stored = UserDefaults.standard.string(forKey: storageKey),
+           let storedMode = AppThemeMode(rawValue: stored) {
+            mode = storedMode
+            return
+        }
+
+        // Backward compatibility with old boolean key.
+        if UserDefaults.standard.object(forKey: legacyStorageKey) != nil {
+            let oldNightMode = UserDefaults.standard.bool(forKey: legacyStorageKey)
+            mode = oldNightMode ? .dark : .light
+            UserDefaults.standard.set(mode.rawValue, forKey: storageKey)
+            return
+        }
+
+        mode = .system
     }
 
     var preferredColorScheme: ColorScheme? {
-        isNightModeEnabled ? .dark : .light
+        switch mode {
+        case .system:
+            return nil
+        case .light:
+            return .light
+        case .dark:
+            return .dark
+        }
+    }
+
+    var isNightModeEnabled: Bool {
+        mode == .dark
     }
 
     func toggleNightMode() {
-        setNightMode(!isNightModeEnabled)
+        setMode(mode == .dark ? .light : .dark)
     }
 
     func setNightMode(_ enabled: Bool) {
-        guard enabled != isNightModeEnabled else { return }
-        isNightModeEnabled = enabled
-        UserDefaults.standard.set(enabled, forKey: storageKey)
+        setMode(enabled ? .dark : .light)
+    }
+
+    func setMode(_ newMode: AppThemeMode) {
+        guard newMode != mode else { return }
+        mode = newMode
+        UserDefaults.standard.set(newMode.rawValue, forKey: storageKey)
     }
 }
 

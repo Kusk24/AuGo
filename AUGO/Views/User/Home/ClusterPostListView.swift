@@ -176,7 +176,7 @@ private struct ClusterPostCard: View {
                         HStack(spacing: 4) {
                             Image(systemName: "arrow.down")
                                 .font(.caption.weight(.bold))
-                                .foregroundColor(.black)
+                                .foregroundColor(.primary)
                             Text("\(firebasePost?.dislikeCount ?? 0)")
                                 .font(.subheadline)
                                 .foregroundColor(.primary)
@@ -189,10 +189,10 @@ private struct ClusterPostCard: View {
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 14)
-                .fill(Color.white)
+                .fill(Color.Brand.surface)
                 .overlay(
                     RoundedRectangle(cornerRadius: 14)
-                        .stroke(Color(UIColor.systemGray5), lineWidth: 1)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
                 )
                 .shadow(color: .black.opacity(0.06), radius: 4, y: 3)
         )

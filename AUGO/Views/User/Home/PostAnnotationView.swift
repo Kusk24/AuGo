@@ -76,7 +76,7 @@ struct PostBubbleView: View {
                 // Message content
                 Text(post.message)
                     .font(.subheadline)
-                    .foregroundColor(.black)
+                    .foregroundColor(.primary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 // Author and time info
@@ -104,12 +104,12 @@ struct PostBubbleView: View {
             .frame(minWidth: 200, maxWidth: 280)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(.white)
+                    .fill(Color.Brand.surface)
                     .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
             )
 
             Triangle()
-                .fill(.white)
+                .fill(Color.Brand.surface)
                 .frame(width: 12, height: 8)
 
             Image(systemName: "mappin.circle.fill")
