@@ -330,9 +330,14 @@ struct ProfileView: View {
             Text("Are you sure you want to logout?")
         }
         .alert("Delete Post", isPresented: $showDeleteAlert) {
-            Button("Cancel", role: .cancel) { }
+            Button("Cancel", role: .cancel) {
+                postToDelete = nil
+                showDeleteAlert = false
+            }
             Button("Delete", role: .destructive) {
                 if let post = postToDelete {
+                    postToDelete = nil
+                    showDeleteAlert = false
                     Task {
                         await deletePost(post)
                     }
