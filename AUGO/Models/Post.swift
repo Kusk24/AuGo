@@ -4,7 +4,7 @@ import FirebaseFirestore
 import CoreLocation
 
 struct Post: Codable, Identifiable {
-    @DocumentID var id: String?
+    var id: String?
     let userId: String
     let date: Date
     let content: String

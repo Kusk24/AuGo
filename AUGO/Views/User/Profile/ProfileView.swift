@@ -10,13 +10,9 @@ struct ProfileView: View {
     @EnvironmentObject var notificationManager: NotificationManager
     @EnvironmentObject var themeManager: AppThemeManager
 
-    @State private var showLogoutAlert = false
+    @State private var activeAlert: ProfileAlertItem?
     @State private var userRank: Int = 0
-    @State private var showDeleteAlert = false
-    @State private var postToDelete: Post?
     @State private var errorMessage: String?
-    @State private var showEconomyAlert = false
-    @State private var economyAlertMessage = ""
     
     // Computed properties for real user data
     private var userName: String {
@@ -124,19 +120,6 @@ struct ProfileView: View {
                         )
                     }
                     .padding(.horizontal, 16)
-                    .onAppear {
-                        refreshUserRank()
-                        
-                        // Fetch user posts with real-time listener
-                        if let userId = authManager.user?.uid {
-                            print("👤 Setting up real-time listener for user posts: \(userId)")
-                            postManager.fetchUserPosts(userId: userId)
-                            authManager.fetchUserProfile(uid: userId)
-                            Task {
-                                await postManager.refreshUserEconomy(userId: userId)
-                            }
-                        }
-                    }
                     
                     // MARK: Coins & Daily Posts
                     VStack(alignment: .leading, spacing: 10) {
@@ -164,11 +147,9 @@ struct ProfileView: View {
                             Task {
                                 do {
                                     let message = try await postManager.claimDailyLoginCoin(userId: userId)
-                                    economyAlertMessage = message
-                                    showEconomyAlert = true
+                                    activeAlert = ProfileAlertItem(kind: .coins(message))
                                 } catch {
-                                    economyAlertMessage = "Failed to claim daily coin: \(error.localizedDescription)"
-                                    showEconomyAlert = true
+                                    activeAlert = ProfileAlertItem(kind: .coins("Failed to claim daily coin: \(error.localizedDescription)"))
                                 }
                             }
                         } label: {
@@ -210,8 +191,7 @@ struct ProfileView: View {
                                     TodayPostCard(
                                         post: post,
                                         onDelete: {
-                                            postToDelete = post
-                                            showDeleteAlert = true
+                                            activeAlert = ProfileAlertItem(kind: .delete(post))
                                         }
                                     )
                                 }
@@ -306,7 +286,7 @@ struct ProfileView: View {
 
                     // MARK: Logout button
                     Button {
-                        showLogoutAlert = true
+                        activeAlert = ProfileAlertItem(kind: .logout)
                     } label: {
                         Text("Logout")
                             .font(.headline)
@@ -320,47 +300,51 @@ struct ProfileView: View {
                     .padding(.bottom, 24)
                 }
             }
+
         }
-        .alert("Logout", isPresented: $showLogoutAlert) {
-            Button("Cancel", role: .cancel) { }
-            Button("Logout", role: .destructive) {
-                authManager.signOut()
+        .alert(item: $activeAlert) { alert in
+            switch alert.kind {
+            case .logout:
+                return Alert(
+                    title: Text("Logout"),
+                    message: Text("Are you sure you want to logout?"),
+                    primaryButton: .destructive(Text("Logout")) {
+                        authManager.signOut()
+                    },
+                    secondaryButton: .cancel()
+                )
+            case .delete(let post):
+                return Alert(
+                    title: Text("Delete Post"),
+                    message: Text("Are you sure you want to delete this post?"),
+                    primaryButton: .destructive(Text("Delete")) {
+                        Task {
+                            await deletePost(post)
+                        }
+                    },
+                    secondaryButton: .cancel()
+                )
+            case .coins(let message):
+                return Alert(
+                    title: Text("Coins"),
+                    message: Text(message),
+                    dismissButton: .cancel()
+                )
             }
-        } message: {
-            Text("Are you sure you want to logout?")
         }
-        .alert("Delete Post", isPresented: $showDeleteAlert) {
-            Button("Cancel", role: .cancel) {
-                postToDelete = nil
-                showDeleteAlert = false
-            }
-            Button("Delete", role: .destructive) {
-                if let post = postToDelete {
-                    postToDelete = nil
-                    showDeleteAlert = false
-                    Task {
-                        await deletePost(post)
-                    }
-                }
-            }
-        } message: {
-            Text("Are you sure you want to delete this post?")
-        }
-        .alert("Coins", isPresented: $showEconomyAlert) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(economyAlertMessage)
+        .task(id: authManager.user?.uid) {
+            guard let userId = authManager.user?.uid else { return }
+            refreshUserRank()
+            print("👤 Setting up real-time listener for user posts: \(userId)")
+            postManager.fetchUserPosts(userId: userId)
+            authManager.fetchUserProfile(uid: userId)
+            await postManager.refreshUserEconomy(userId: userId)
         }
         .onChange(of: authManager.user?.uid) { _, newUserId in
             // Re-setup listener if user changes
             if let userId = newUserId {
-                print("👤 User changed, re-setting up listener: \(userId)")
-                postManager.fetchUserPosts(userId: userId)
-                authManager.fetchUserProfile(uid: userId)
                 refreshUserRank()
-                Task {
-                    await postManager.refreshUserEconomy(userId: userId)
-                }
+                print("👤 User changed: \(userId)")
             }
         }
         .onChange(of: authManager.userProfile?.score) { _, _ in
@@ -399,6 +383,18 @@ struct ProfileView: View {
             userRank = rank
         }
     }
+
+}
+
+private struct ProfileAlertItem: Identifiable {
+    enum Kind {
+        case logout
+        case delete(Post)
+        case coins(String)
+    }
+
+    let id = UUID()
+    let kind: Kind
 }
 
 private func coinsText(_ value: Double) -> String {
@@ -569,11 +565,16 @@ private struct TodayPostCard: View {
                 
                 Spacer()
                 
-                Button(action: onDelete) {
+                Button {
+                    onDelete()
+                } label: {
                     Image(systemName: "trash")
                         .foregroundColor(.red.opacity(0.85))
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(size: 20, weight: .bold))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.borderless)
             }
 
             if let resolvedPhotoURL {

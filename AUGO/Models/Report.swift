@@ -3,7 +3,7 @@ import Foundation
 import FirebaseFirestore
 
 struct Report: Codable, Identifiable {
-    @DocumentID var id: String?
+    var id: String?
     let category: ReportCategory
     let description: String
     let postContent: String

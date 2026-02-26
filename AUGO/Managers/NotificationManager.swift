@@ -78,20 +78,34 @@ class NotificationManager: NSObject, ObservableObject {
             userNotificationsListener = nil
             return
         }
+        attachUserNotificationsListener(userId: userId, useOrderedQuery: true)
+    }
+
+    private func attachUserNotificationsListener(userId: String, useOrderedQuery: Bool) {
         userNotificationsListener?.remove()
-        userNotificationsListener = db.collection("user_notifications")
+        let baseQuery = db.collection("user_notifications")
             .whereField("userId", isEqualTo: userId)
-            .order(by: "createdAt", descending: true)
-            .limit(to: 100)
-            .addSnapshotListener { [weak self] snapshot, error in
+        let query = useOrderedQuery
+            ? baseQuery.order(by: "createdAt", descending: true).limit(to: 100)
+            : baseQuery.limit(to: 200)
+
+        userNotificationsListener = query.addSnapshotListener { [weak self] snapshot, error in
                 guard let self else { return }
                 Task { @MainActor in
                     if let error {
-                        print("❌ user_notifications listener error: \(error.localizedDescription)")
+                        let message = error.localizedDescription
+                        print("❌ user_notifications listener error: \(message)")
+                        if useOrderedQuery, message.localizedCaseInsensitiveContains("requires an index") {
+                            print("⚠️ user_notifications missing index; switching to fallback listener")
+                            self.attachUserNotificationsListener(userId: userId, useOrderedQuery: false)
+                        }
                         return
                     }
 
                     guard let documents = snapshot?.documents else { return }
+                    if !useOrderedQuery {
+                        self.receivedNotifications.removeAll()
+                    }
                     for doc in documents {
                         let data = doc.data()
                         let title = (data["title"] as? String) ?? "Notification"
@@ -108,6 +122,12 @@ class NotificationManager: NSObject, ObservableObject {
                                 receivedAt: createdAt
                             )
                         )
+                    }
+                    if !useOrderedQuery {
+                        self.receivedNotifications.sort { $0.receivedAt > $1.receivedAt }
+                        if self.receivedNotifications.count > 100 {
+                            self.receivedNotifications = Array(self.receivedNotifications.prefix(100))
+                        }
                     }
                 }
             }

@@ -18,7 +18,7 @@ struct ARCapturedCharacter: Codable, Identifiable {
 }
 
 struct User: Codable, Identifiable {
-    @DocumentID var id: String?
+    var id: String?
     
     let studentID: String
     let name: String
