@@ -118,6 +118,7 @@ struct LeaderboardView: View {
         .refreshable {
             fetchLeaderboard()
         }
+        .toolbar(.visible, for: .navigationBar)
     }
     
     func fetchLeaderboard() {

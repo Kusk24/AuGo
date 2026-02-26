@@ -17,7 +17,8 @@ struct RootTabView: View {
                 NavigationStack {
                     HomeView(showAnnouncement: $showAnnouncement)
                         .navigationTitle("Campus Map")
-                        .navigationBarTitleDisplayMode(.large)
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar(.visible, for: .navigationBar)
                 }
                 .tabItem {
                     Image(systemName: "house.fill")
@@ -27,8 +28,7 @@ struct RootTabView: View {
                 // AR CAMERA — NO TITLE (clean fullscreen gameplay)
                 NavigationStack {
                     ARCameraView()
-                        .navigationBarTitle("")                // ← remove title text
-                        .navigationBarHidden(true)             // ← hide entire bar
+                        .toolbar(.hidden, for: .navigationBar)
                 }
                 .tabItem {
                     Image(systemName: "camera.viewfinder")
@@ -39,7 +39,8 @@ struct RootTabView: View {
                 NavigationStack {
                     LeaderboardView()
                         .navigationTitle("Leaderboard")
-                        .navigationBarTitleDisplayMode(.large)
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar(.visible, for: .navigationBar)
                 }
                 .tabItem {
                     Image(systemName: "chart.bar.fill")
@@ -50,7 +51,8 @@ struct RootTabView: View {
                 NavigationStack {
                     ProfileView()
                         .navigationTitle("Profile")
-                        .navigationBarTitleDisplayMode(.large)
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar(.visible, for: .navigationBar)
                 }
                 .tabItem {
                     Image(systemName: "person.fill")

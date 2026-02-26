@@ -6,6 +6,7 @@ struct AnnouncerHomeView: View {
     var body: some View {
         AnnouncerCampusMapView(showAnnouncement: $showAnnouncement)
             .navigationTitle("Campus Map")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.visible, for: .navigationBar)
     }
 }

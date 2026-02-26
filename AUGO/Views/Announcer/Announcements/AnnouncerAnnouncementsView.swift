@@ -58,6 +58,8 @@ struct AnnouncerAnnouncementsView: View {
             }
         }
         .navigationTitle("My Announcements")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
         .onAppear {
             viewModel.startListening()
         }

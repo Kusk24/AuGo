@@ -54,7 +54,7 @@
 		C576E4932F424C630057A27C /* NotificationListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C576E4922F424C630057A27C /* NotificationListView.swift */; };
 		C576E4952F4262800057A27C /* ContentSymbolKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = C576E4942F4262800057A27C /* ContentSymbolKit.swift */; };
 		C5905DA32F465DE1002F699C /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = C5905DA22F465DE1002F699C /* FirebaseStorage */; };
-		C5A0B0AE2F50945C00DDE1DB /*  .swift in Sources */ = {isa = PBXBuildFile; fileRef = C5A0B0AC2F50945C00DDE1DB /*  .swift */; };
+		C5A0B0AE2F50945C00DDE1DB /* SimmeringCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5A0B0AC2F50945C00DDE1DB /* SimmeringCard.swift */; };
 		C5A27FB52F4411F50027CF0A /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = C5A27FB42F4411F50027CF0A /* GoogleSignIn */; };
 		C5A27FB72F4411F60027CF0A /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = C5A27FB62F4411F60027CF0A /* GoogleSignInSwift */; };
 		C5A27FBA2F4412A00027CF0A /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = C5A27FB92F4412A00027CF0A /* FirebaseAuth */; };
@@ -117,7 +117,7 @@
 		C576E48D2F3A6CF30057A27C /* AnnouncerAnnouncementsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncerAnnouncementsViewModel.swift; sourceTree = "<group>"; };
 		C576E4922F424C630057A27C /* NotificationListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationListView.swift; sourceTree = "<group>"; };
 		C576E4942F4262800057A27C /* ContentSymbolKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentSymbolKit.swift; sourceTree = "<group>"; };
-		C5A0B0AC2F50945C00DDE1DB /*  .swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = " .swift"; sourceTree = "<group>"; };
+		C5A0B0AC2F50945C00DDE1DB /* SimmeringCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimmeringCard.swift; sourceTree = "<group>"; };
 		C5FAEAD12EE5988200ED4C27 /* Announcer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Announcer.swift; sourceTree = "<group>"; };
 		C5FAEAD32EE5988D00ED4C27 /* Post.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Post.swift; sourceTree = "<group>"; };
 		C5FAEAD52EE5989400ED4C27 /* Report.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Report.swift; sourceTree = "<group>"; };
@@ -356,7 +356,7 @@
 		C5A0B0AD2F50945C00DDE1DB /* Shared */ = {
 			isa = PBXGroup;
 			children = (
-				C5A0B0AC2F50945C00DDE1DB /*  .swift */,
+				C5A0B0AC2F50945C00DDE1DB /* SimmeringCard.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -461,7 +461,7 @@
 				C576E4572F3A6C910057A27C /* CreateAnnouncementView.swift in Sources */,
 				C576E4582F3A6C910057A27C /* AnnouncementRow.swift in Sources */,
 				C576E4592F3A6C910057A27C /* AnnouncerCampusMapView.swift in Sources */,
-				C5A0B0AE2F50945C00DDE1DB /*  .swift in Sources */,
+				C5A0B0AE2F50945C00DDE1DB /* SimmeringCard.swift in Sources */,
 				C576E45A2F3A6C910057A27C /* InfoRow.swift in Sources */,
 				C576E48E2F3A6CF30057A27C /* AnnouncerAnnouncementsViewModel.swift in Sources */,
 				C576E4882F3A6CA00057A27C /* AnnouncementManager.swift in Sources */,

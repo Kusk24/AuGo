@@ -14,8 +14,7 @@ struct AnnouncerRootTabView: View {
                 // HOME
                 NavigationStack {
                     AnnouncerHomeView(showAnnouncement: $showAnnouncement)
-                        .navigationTitle("Campus Map")
-                        .navigationBarTitleDisplayMode(.large)
+                        .toolbar(.visible, for: .navigationBar)
                 }
                 .tabItem {
                     Image(systemName: "house.fill")
@@ -25,6 +24,7 @@ struct AnnouncerRootTabView: View {
                 // ANNOUNCEMENTS (later)
                 NavigationStack {
                     AnnouncerAnnouncementsView()
+                        .toolbar(.visible, for: .navigationBar)
                 }
                 .tabItem {
                     Image(systemName: "megaphone.fill")
@@ -35,6 +35,7 @@ struct AnnouncerRootTabView: View {
                 NavigationStack {
                     AnnouncerProfileView()
                         .font(.headline)
+                        .toolbar(.visible, for: .navigationBar)
                 }
                 .tabItem {
                     Image(systemName: "person.fill")

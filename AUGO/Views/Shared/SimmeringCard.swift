@@ -50,7 +50,7 @@ struct HolographicCaptureCard: View {
                     )
                 )
 
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Text(title)
                         .font(.title3.weight(.bold))
@@ -74,13 +74,14 @@ struct HolographicCaptureCard: View {
                     .lineLimit(2)
 
                 if let descriptionText, !descriptionText.isEmpty {
-                    ScrollView(.vertical, showsIndicators: false) {
-                        Text(descriptionText)
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.84))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .frame(minHeight: 20, maxHeight: 56)
+                    Text(descriptionText)
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.84))
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(3)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, minHeight: 34, alignment: .topLeading)
+                        .padding(.vertical, 2)
                 }
 
                 ZStack {
@@ -110,7 +111,7 @@ struct HolographicCaptureCard: View {
                             .foregroundColor(.white.opacity(0.8))
                     }
                 }
-                .frame(height: 150)
+                .frame(height: 138)
 
                 HStack(spacing: 12) {
                     statChip(icon: "bitcoinsign.circle.fill", text: coinText)

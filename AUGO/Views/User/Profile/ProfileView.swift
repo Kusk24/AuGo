@@ -408,6 +408,7 @@ struct ProfileView: View {
         .onChange(of: authManager.userProfile?.score) { _, _ in
             refreshUserRank()
         }
+        .toolbar(.visible, for: .navigationBar)
     }
     
     // MARK: - Delete Post
