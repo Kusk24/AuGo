@@ -613,9 +613,12 @@ class AuthenticationManager: ObservableObject {
 
                 return ARCapturedCharacter(
                     spawnId: spawnId,
+                    sourceSpawnId: entry["sourceSpawnId"] as? String,
                     title: title,
                     assetPath: assetPath,
                     preview: (entry["preview"] as? String) ?? (entry["previewPath"] as? String),
+                    rarity: entry["rarity"] as? String,
+                    characterDescription: entry["description"] as? String,
                     coinValue: parseDouble(entry["coinValue"]),
                     pointValue: parseInt(entry["pointValue"]),
                     catchCount: entry["catchCount"] as? Int ?? 0,
@@ -730,6 +733,15 @@ class AuthenticationManager: ObservableObject {
                     if let preview = $0.preview {
                         payload["preview"] = preview
                         payload["previewPath"] = preview
+                    }
+                    if let sourceSpawnId = $0.sourceSpawnId, !sourceSpawnId.isEmpty {
+                        payload["sourceSpawnId"] = sourceSpawnId
+                    }
+                    if let rarity = $0.rarity, !rarity.isEmpty {
+                        payload["rarity"] = rarity
+                    }
+                    if let description = $0.characterDescription, !description.isEmpty {
+                        payload["description"] = description
                     }
                     if let lastCapturedAt = $0.lastCapturedAt {
                         payload["lastCapturedAt"] = Timestamp(date: lastCapturedAt)

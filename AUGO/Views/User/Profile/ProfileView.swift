@@ -2,6 +2,7 @@ import SwiftUI
 import FirebaseAuth
 import FirebaseCore
 import FirebaseStorage
+import FirebaseFirestore
 
 struct ProfileView: View {
     
@@ -13,6 +14,11 @@ struct ProfileView: View {
     @State private var activeAlert: ProfileAlertItem?
     @State private var userRank: Int = 0
     @State private var errorMessage: String?
+    @State private var selectedCapturedCharacter: ARCapturedCharacter?
+    @State private var selectedCapturePreviewURL: URL?
+    @State private var selectedCaptureRarity: String?
+    @State private var selectedCaptureDescription: String?
+    @State private var spawnMetadataByID: [String: ARSpawnMetadata] = [:]
     
     // Computed properties for real user data
     private var userName: String {
@@ -65,6 +71,32 @@ struct ProfileView: View {
     private var capturedCharacters: [ARCapturedCharacter] {
         (authManager.userProfile?.arCapturedCharacters ?? [])
             .sorted { ($0.lastCapturedAt ?? .distantPast) > ($1.lastCapturedAt ?? .distantPast) }
+    }
+
+    private func sourceSpawnLookupID(for capture: ARCapturedCharacter) -> String? {
+        if let source = capture.sourceSpawnId?.trimmingCharacters(in: .whitespacesAndNewlines), !source.isEmpty {
+            return source
+        }
+        if let split = capture.spawnId.split(separator: "@").first, !split.isEmpty {
+            return String(split)
+        }
+        return nil
+    }
+
+    private func effectiveRarity(for capture: ARCapturedCharacter) -> String? {
+        if let rarity = capture.rarity?.trimmingCharacters(in: .whitespacesAndNewlines), !rarity.isEmpty {
+            return rarity
+        }
+        guard let sourceID = sourceSpawnLookupID(for: capture) else { return nil }
+        return spawnMetadataByID[sourceID]?.rarity
+    }
+
+    private func effectiveDescription(for capture: ARCapturedCharacter) -> String? {
+        if let text = capture.characterDescription?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+            return text
+        }
+        guard let sourceID = sourceSpawnLookupID(for: capture) else { return nil }
+        return spawnMetadataByID[sourceID]?.description
     }
 
     var body: some View {
@@ -217,7 +249,15 @@ struct ProfileView: View {
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 12) {
                                     ForEach(capturedCharacters) { capture in
-                                        CapturedCharacterCard(capture: capture)
+                                        CapturedCharacterCard(
+                                            capture: capture,
+                                            onTap: { previewURL in
+                                                selectedCapturePreviewURL = previewURL
+                                                selectedCaptureRarity = effectiveRarity(for: capture)
+                                                selectedCaptureDescription = effectiveDescription(for: capture)
+                                                selectedCapturedCharacter = capture
+                                            }
+                                        )
                                     }
                                 }
                                 .padding(.vertical, 4)
@@ -332,6 +372,20 @@ struct ProfileView: View {
                 )
             }
         }
+        .sheet(item: $selectedCapturedCharacter, onDismiss: {
+            selectedCapturePreviewURL = nil
+            selectedCaptureRarity = nil
+            selectedCaptureDescription = nil
+        }) { capture in
+            CapturedCharacterDetailSheet(
+                capture: capture,
+                imageURL: selectedCapturePreviewURL,
+                rarityOverride: selectedCaptureRarity,
+                descriptionOverride: selectedCaptureDescription
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
         .task(id: authManager.user?.uid) {
             guard let userId = authManager.user?.uid else { return }
             refreshUserRank()
@@ -339,6 +393,10 @@ struct ProfileView: View {
             postManager.fetchUserPosts(userId: userId)
             authManager.fetchUserProfile(uid: userId)
             await postManager.refreshUserEconomy(userId: userId)
+            await refreshCapturedSpawnMetadata()
+        }
+        .task(id: capturedCharacters.map(\.spawnId).joined(separator: "|")) {
+            await refreshCapturedSpawnMetadata()
         }
         .onChange(of: authManager.user?.uid) { _, newUserId in
             // Re-setup listener if user changes
@@ -384,6 +442,44 @@ struct ProfileView: View {
         }
     }
 
+    private func refreshCapturedSpawnMetadata() async {
+        let sourceIDs = Array(Set(capturedCharacters.compactMap { sourceSpawnLookupID(for: $0) }))
+        guard !sourceIDs.isEmpty else {
+            await MainActor.run { spawnMetadataByID = [:] }
+            return
+        }
+
+        let db = Firestore.firestore()
+        var merged: [String: ARSpawnMetadata] = [:]
+        let chunkSize = 10
+        var start = 0
+        while start < sourceIDs.count {
+            let end = min(start + chunkSize, sourceIDs.count)
+            let chunk = Array(sourceIDs[start..<end])
+            do {
+                let snapshot = try await db.collection("ar_spawns")
+                    .whereField(FieldPath.documentID(), in: chunk)
+                    .getDocuments()
+                for doc in snapshot.documents {
+                    let data = doc.data()
+                    merged[doc.documentID] = ARSpawnMetadata(
+                        rarity: data["rarity"] as? String,
+                        description: data["description"] as? String
+                    )
+                }
+            } catch {
+                print("❌ Failed loading AR spawn metadata for profile cards: \(error.localizedDescription)")
+            }
+            start = end
+        }
+        await MainActor.run { spawnMetadataByID = merged }
+    }
+
+}
+
+private struct ARSpawnMetadata {
+    let rarity: String?
+    let description: String?
 }
 
 private struct ProfileAlertItem: Identifiable {
@@ -690,6 +786,7 @@ private struct TodayPostCard: View {
 
 private struct CapturedCharacterCard: View {
     let capture: ARCapturedCharacter
+    let onTap: (URL?) -> Void
     @State private var resolvedPreviewURL: URL?
     @State private var isLoadingPreview = false
     @State private var previewRetryCount = 0
@@ -763,75 +860,81 @@ private struct CapturedCharacterCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.Brand.primary.opacity(0.18), Color.Brand.primary.opacity(0.06)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+        Button {
+            onTap(previewURL)
+        } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.Brand.primary.opacity(0.18), Color.Brand.primary.opacity(0.06)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         )
-                    )
 
-                if let previewURL {
-                    AsyncImage(url: previewURL) { phase in
-                        switch phase {
-                        case .empty:
-                            ProgressView()
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFit()
-                                .padding(10)
-                        case .failure:
-                            placeholderView
-                                .onAppear { schedulePreviewRetry() }
-                        @unknown default:
-                            placeholderView
+                    if let previewURL {
+                        AsyncImage(url: previewURL) { phase in
+                            switch phase {
+                            case .empty:
+                                ProgressView()
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .scaledToFit()
+                                    .padding(10)
+                            case .failure:
+                                placeholderView
+                                    .onAppear { schedulePreviewRetry() }
+                            @unknown default:
+                                placeholderView
+                            }
                         }
+                    } else if isLoadingPreview {
+                        ProgressView()
+                    } else {
+                        placeholderView
                     }
-                } else if isLoadingPreview {
-                    ProgressView()
-                } else {
-                    placeholderView
                 }
+                .frame(height: 156)
+                .task(id: resolvedPreviewPath ?? "") {
+                    previewRetryCount = 0
+                    isPreviewRetryScheduled = false
+                    await loadPreviewURL()
+                }
+
+                Text(capture.title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .foregroundColor(.primary)
+
+                Text("\(capture.catchCount)/\(capture.catchableTime) captured")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                ProgressView(value: progress)
+                    .tint(Color.Brand.primary)
+
+                Text(footerText)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(height: 156)
-            .task(id: resolvedPreviewPath ?? "") {
-                previewRetryCount = 0
-                isPreviewRetryScheduled = false
-                await loadPreviewURL()
-            }
-
-            Text(capture.title)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
-
-            Text("\(capture.catchCount)/\(capture.catchableTime) captured")
-                .font(.caption)
-                .foregroundColor(.secondary)
-
-            ProgressView(value: progress)
-                .tint(Color.Brand.primary)
-
-            Text(footerText)
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
+            .padding(12)
+            .frame(width: 180, height: 332, alignment: .top)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.Brand.surface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    )
+            )
+            .shadow(color: .black.opacity(0.05), radius: 4, y: 2)
         }
-        .padding(12)
-        .frame(width: 180, height: 332, alignment: .top)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color.Brand.surface)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                )
-        )
-        .shadow(color: .black.opacity(0.05), radius: 4, y: 2)
+        .buttonStyle(.plain)
     }
 
     private var placeholderView: some View {
@@ -849,6 +952,52 @@ private struct CapturedCharacterCard: View {
                 .font(.caption2)
                 .foregroundColor(.secondary)
         }
+    }
+}
+
+private struct CapturedCharacterDetailSheet: View {
+    let capture: ARCapturedCharacter
+    let imageURL: URL?
+    let rarityOverride: String?
+    let descriptionOverride: String?
+    @Environment(\.dismiss) private var dismiss
+
+    private var subtitle: String {
+        let countText = "Captured \(capture.catchCount)/\(capture.catchableTime)"
+        guard let last = capture.lastCapturedAt else {
+            return countText
+        }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return "\(countText) · \(formatter.localizedString(for: last, relativeTo: Date()))"
+    }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            HStack {
+                Text("Captured Character")
+                    .font(.headline)
+                Spacer()
+                Button("Done") { dismiss() }
+                    .font(.subheadline.weight(.semibold))
+            }
+
+            HolographicCaptureCard(
+                title: capture.title,
+                subtitle: subtitle,
+                descriptionText: descriptionOverride ?? capture.characterDescription,
+                rarity: rarityOverride ?? capture.rarity,
+                imageURL: imageURL,
+                coinText: "+\(coinsText(capture.coinValue))",
+                pointsText: "+\(capture.pointValue) pts",
+                cardHeight: 360
+            )
+            .frame(maxWidth: 340)
+
+            Spacer(minLength: 0)
+        }
+        .padding(16)
+        .background(Color.Brand.appBackground.ignoresSafeArea())
     }
 }
 

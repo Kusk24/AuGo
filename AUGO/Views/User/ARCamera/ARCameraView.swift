@@ -112,7 +112,41 @@ struct ARCameraView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                     .padding(.bottom, 20)
             }
+
+            if let celebration = viewModel.captureCelebration {
+                Color.black.opacity(0.35)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        viewModel.dismissCaptureCelebration()
+                    }
+
+                VStack(spacing: 12) {
+                    HolographicCaptureCard(
+                        title: celebration.title,
+                        subtitle: celebration.subtitle,
+                        descriptionText: celebration.descriptionText,
+                        rarity: celebration.rarity,
+                        imageURL: celebration.imageURL,
+                        coinText: celebration.coinText,
+                        pointsText: celebration.pointsText,
+                        cardHeight: 360
+                    )
+                    .frame(maxWidth: 340)
+
+                    Button("Close") {
+                        viewModel.dismissCaptureCelebration()
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 9)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
+                }
+                .padding(.horizontal, 20)
+                .transition(.scale.combined(with: .opacity))
+            }
         }
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.captureCelebration?.id)
         .onAppear {
             viewModel.onAppear()
         }
@@ -699,6 +733,7 @@ private final class ARCameraViewModel: ObservableObject {
     @Published var nearbyPosts: [ARNearbyPost] = []
     @Published var nearbyAnnouncements: [ARNearbyAnnouncement] = []
     @Published var showPostsInCharacter = false
+    @Published var captureCelebration: ARCaptureCelebration?
 
     private let locationManager = LocationManager()
     private let db = Firestore.firestore()
@@ -906,6 +941,15 @@ private final class ARCameraViewModel: ObservableObject {
                 userCaptureProgress[spawn.id] = ARCaptureProgress(count: result.newCount, lastCapturedAt: Date())
                 statusText = "Captured \(spawn.title)! +\(formatCoins(spawn.coinValue)) coins, +\(spawn.pointValue) points"
                 catchInstructionText = result.newCount >= spawn.catchableTime ? "Limit reached for this spawn" : "Captured! Ready again after cooldown"
+                captureCelebration = ARCaptureCelebration(
+                    title: spawn.title,
+                    subtitle: "Captured \(result.newCount)/\(spawn.catchableTime)",
+                    descriptionText: spawn.descriptionText,
+                    rarity: spawn.rarity,
+                    imageURL: storageMediaURL(from: spawn.preview),
+                    coinText: "+\(formatCoins(spawn.coinValue))",
+                    pointsText: "+\(spawn.pointValue) pts"
+                )
                 renderSpawnID = nil
                 canRenderModel = false
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -932,6 +976,10 @@ private final class ARCameraViewModel: ObservableObject {
             }
             isCaptureProcessing = false
         }
+    }
+
+    func dismissCaptureCelebration() {
+        captureCelebration = nil
     }
 
     @MainActor
@@ -1548,6 +1596,12 @@ private final class ARCameraViewModel: ObservableObject {
                 if let preview = spawn.preview {
                     record["preview"] = preview
                 }
+                if let rarity = spawn.rarity, !rarity.isEmpty {
+                    record["rarity"] = rarity
+                }
+                if let description = spawn.descriptionText, !description.isEmpty {
+                    record["description"] = description
+                }
                 if let locationName = spawn.locationName {
                     record["locationName"] = locationName
                 }
@@ -1614,6 +1668,33 @@ private final class ARCameraViewModel: ObservableObject {
         if let intValue = value as? Int { return Double(intValue) }
         if let stringValue = value as? String { return Double(stringValue) ?? defaultValue }
         return defaultValue
+    }
+
+    private func storageMediaURL(from rawValue: String?) -> URL? {
+        guard let value = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return nil
+        }
+        if value.hasPrefix("https://") || value.hasPrefix("http://") {
+            return URL(string: value)
+        }
+
+        let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+        if value.hasPrefix("gs://"), let gsURL = URL(string: value), let bucket = gsURL.host {
+            var objectPath = gsURL.path
+            while objectPath.hasPrefix("/") { objectPath.removeFirst() }
+            guard let escapedPath = objectPath.addingPercentEncoding(withAllowedCharacters: allowed) else {
+                return nil
+            }
+            return URL(string: "https://firebasestorage.googleapis.com/v0/b/\(bucket)/o/\(escapedPath)?alt=media")
+        }
+
+        guard let bucket = FirebaseApp.app()?.options.storageBucket else { return nil }
+        var objectPath = value
+        while objectPath.hasPrefix("/") { objectPath.removeFirst() }
+        guard let escapedPath = objectPath.addingPercentEncoding(withAllowedCharacters: allowed) else {
+            return nil
+        }
+        return URL(string: "https://firebasestorage.googleapis.com/v0/b/\(bucket)/o/\(escapedPath)?alt=media")
     }
 
     private func formatCoins(_ value: Double) -> String {
@@ -1693,6 +1774,17 @@ private struct ARCaptureProgress {
     let lastCapturedAt: Date?
 }
 
+private struct ARCaptureCelebration: Identifiable {
+    let id = UUID()
+    let title: String
+    let subtitle: String
+    let descriptionText: String?
+    let rarity: String?
+    let imageURL: URL?
+    let coinText: String
+    let pointsText: String
+}
+
 private enum ARCatchEligibility {
     case available
     case cooldown(availableAt: Date)
@@ -1714,6 +1806,8 @@ private struct ARSpawn {
     let catchableTime: Int
     let respawnDays: Int
     let preview: String?
+    let descriptionText: String?
+    let rarity: String?
     let locationName: String?
     let legacyProgressKey: String?
 
@@ -1737,6 +1831,8 @@ private struct ARSpawn {
         let catchableTime = max(1, ARSpawn.toInt(data["catchable_time"]) ?? 1)
         let respawnDays = max(1, ARSpawn.toInt(data["respawn_days"]) ?? 1)
         let preview = (data["preview"] as? String) ?? (data["previewPath"] as? String)
+        let descriptionText = data["description"] as? String
+        let rarity = data["rarity"] as? String
         let fixedLocations = data["fixedLocations"] as? [[String: Any]] ?? []
 
         var locations: [(lat: Double, lon: Double, name: String?, isPrimary: Bool)] = []
@@ -1770,6 +1866,8 @@ private struct ARSpawn {
                 catchableTime: catchableTime,
                 respawnDays: respawnDays,
                 preview: preview,
+                descriptionText: descriptionText,
+                rarity: rarity,
                 locationName: location.name,
                 legacyProgressKey: location.isPrimary ? documentID : nil
             )
@@ -1791,6 +1889,8 @@ private struct ARSpawn {
         catchableTime: Int,
         respawnDays: Int,
         preview: String?,
+        descriptionText: String?,
+        rarity: String?,
         locationName: String?,
         legacyProgressKey: String?
     ) {
@@ -1808,6 +1908,8 @@ private struct ARSpawn {
         self.catchableTime = catchableTime
         self.respawnDays = respawnDays
         self.preview = preview
+        self.descriptionText = descriptionText
+        self.rarity = rarity
         self.locationName = locationName
         self.legacyProgressKey = legacyProgressKey
     }
