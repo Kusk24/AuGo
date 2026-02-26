@@ -10,7 +10,7 @@ struct HolographicCaptureCard: View {
     let imageURL: URL?
     let coinText: String
     let pointsText: String
-    let cardHeight: CGFloat
+    let cardHeight: CGFloat?
 
     @State private var shimmerOffset: CGFloat = -260
     @State private var dragOffset: CGSize = .zero
@@ -25,7 +25,7 @@ struct HolographicCaptureCard: View {
         imageURL: URL?,
         coinText: String,
         pointsText: String,
-        cardHeight: CGFloat = 360
+        cardHeight: CGFloat? = nil
     ) {
         self.title = title
         self.subtitle = subtitle
@@ -78,9 +78,9 @@ struct HolographicCaptureCard: View {
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.84))
                         .multilineTextAlignment(.leading)
-                        .lineLimit(3)
-                        .truncationMode(.tail)
-                        .frame(maxWidth: .infinity, minHeight: 34, alignment: .topLeading)
+                        .lineLimit(nil)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                         .padding(.vertical, 2)
                 }
 
@@ -137,7 +137,7 @@ struct HolographicCaptureCard: View {
                 .blendMode(.screen)
                 .allowsHitTesting(false)
         }
-        .frame(height: cardHeight)
+        .frame(height: resolvedCardHeight)
         .clipShape(cardShape)
         .overlay(
             cardShape
@@ -186,6 +186,17 @@ struct HolographicCaptureCard: View {
             width: -CGFloat(tiltController.roll) * 15.84,
             height: -CGFloat(tiltController.pitch) * 12.96
         )
+    }
+
+    private var resolvedCardHeight: CGFloat {
+        if let cardHeight {
+            return cardHeight
+        }
+        let desc = descriptionText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !desc.isEmpty else { return 360 }
+        let estimatedLines = max(2, Int(ceil(Double(desc.count) / 38.0)))
+        let extraLines = max(0, estimatedLines - 2)
+        return 360 + CGFloat(min(extraLines, 12)) * 16
     }
 
     private var rarityGradientColors: [Color] {

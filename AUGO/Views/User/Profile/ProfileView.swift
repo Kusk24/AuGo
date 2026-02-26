@@ -383,7 +383,7 @@ struct ProfileView: View {
                 rarityOverride: selectedCaptureRarity,
                 descriptionOverride: selectedCaptureDescription
             )
-            .presentationDetents([.medium, .large])
+            .presentationDetents([.fraction(0.78), .large])
             .presentationDragIndicator(.visible)
         }
         .task(id: authManager.user?.uid) {
@@ -974,7 +974,7 @@ private struct CapturedCharacterDetailSheet: View {
     }
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 24) {
             HStack {
                 Text("Captured Character")
                     .font(.headline)
@@ -982,6 +982,8 @@ private struct CapturedCharacterDetailSheet: View {
                 Button("Done") { dismiss() }
                     .font(.subheadline.weight(.semibold))
             }
+            .padding(.top, 14)
+            .padding(.horizontal, 8)
 
             HolographicCaptureCard(
                 title: capture.title,
@@ -990,14 +992,16 @@ private struct CapturedCharacterDetailSheet: View {
                 rarity: rarityOverride ?? capture.rarity,
                 imageURL: imageURL,
                 coinText: "+\(coinsText(capture.coinValue))",
-                pointsText: "+\(capture.pointValue) pts",
-                cardHeight: 360
+                pointsText: "+\(capture.pointValue) pts"
             )
             .frame(maxWidth: 340)
+            .padding(.top, 2)
 
             Spacer(minLength: 0)
         }
-        .padding(16)
+        .padding(.horizontal, 20)
+        .padding(.top, 10)
+        .padding(.bottom, 16)
         .background(Color.Brand.appBackground.ignoresSafeArea())
     }
 }
