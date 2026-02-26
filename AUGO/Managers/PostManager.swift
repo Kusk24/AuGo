@@ -821,6 +821,11 @@ class PostManager: ObservableObject {
     
     // Like a post (removes dislike if exists, toggles like)
     func likePost(_ postId: String, userId: String) async throws {
+        if try await isOwnPost(postId: postId, userId: userId) {
+            print("ℹ️ Ignored like on own post \(postId)")
+            return
+        }
+
         let reactionId = "\(userId)_\(postId)"
         let reactionRef = db.collection("user_reactions").document(reactionId)
         let reactionDoc = try await reactionRef.getDocument()
@@ -859,6 +864,11 @@ class PostManager: ObservableObject {
     
     // Dislike a post (removes like if exists, toggles dislike)
     func dislikePost(_ postId: String, userId: String) async throws {
+        if try await isOwnPost(postId: postId, userId: userId) {
+            print("ℹ️ Ignored dislike on own post \(postId)")
+            return
+        }
+
         let reactionId = "\(userId)_\(postId)"
         let reactionRef = db.collection("user_reactions").document(reactionId)
         let reactionDoc = try await reactionRef.getDocument()
@@ -893,6 +903,14 @@ class PostManager: ObservableObject {
             ])
             print("👎 Added dislike to post \(postId)")
         }
+    }
+
+    private func isOwnPost(postId: String, userId: String) async throws -> Bool {
+        let postDocument = try await db.collection("posts").document(postId).getDocument()
+        guard let ownerId = postDocument.data()?["userId"] as? String else {
+            return false
+        }
+        return ownerId == userId
     }
     
     // MARK: - Report Post

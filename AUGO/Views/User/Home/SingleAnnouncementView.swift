@@ -42,9 +42,14 @@ struct SingleAnnouncementView: View {
                 Button {
                     dismiss()
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.gray)
-                        .font(.title3)
+                    Circle()
+                        .fill(Color(UIColor.systemGray5))
+                        .frame(width: 44, height: 44)
+                        .overlay(
+                            Image(systemName: "xmark")
+                                .font(.title3.weight(.semibold))
+                                .foregroundColor(.gray)
+                        )
                 }
             }
             .padding(.horizontal)

@@ -24,5 +24,7 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>AUGO needs notification permission to alert you about new posts, reactions, and campus updates.</string>
 </dict>
 </plist>

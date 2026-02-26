@@ -15,6 +15,15 @@ struct AnnouncerCampusMapView: View {
     @State private var showNotificationList = false
     @State private var mapAnnouncements: [Announcement] = []
     @State private var announcementsListener: ListenerRegistration?
+
+    private var defaultMapRegion: MKCoordinateRegion {
+        let span = campusMapViewModel.campusRegion.span
+        let shiftedCenter = CLLocationCoordinate2D(
+            latitude: campusMapViewModel.campusRegion.center.latitude,
+            longitude: campusMapViewModel.campusRegion.center.longitude + (span.longitudeDelta * 0.075)
+        )
+        return MKCoordinateRegion(center: shiftedCenter, span: span)
+    }
     
     var body: some View {
         ZStack {
@@ -73,7 +82,7 @@ struct AnnouncerCampusMapView: View {
             }
         }
         .onAppear {
-            cameraPosition = .region(campusMapViewModel.campusRegion)
+            cameraPosition = .region(defaultMapRegion)
             startAnnouncementsListener()
         }
         .onDisappear {
@@ -85,12 +94,17 @@ struct AnnouncerCampusMapView: View {
                 Button {
                     showNotificationList = true
                 } label: {
+                    let hasUnread = notificationManager.unreadCount > 0
                     Image(systemName:
-                        !notificationManager.receivedNotifications.isEmpty
+                        hasUnread
                         ? "bell.badge.fill"
                         : "bell.fill"
                     )
-                    .foregroundColor(Color.Brand.primary)
+                    .symbolRenderingMode(hasUnread ? .palette : .monochrome)
+                    .foregroundStyle(
+                        hasUnread ? AnyShapeStyle(Color.red) : AnyShapeStyle(Color.Brand.primary),
+                        Color.Brand.primary
+                    )
                 }
             }
         }

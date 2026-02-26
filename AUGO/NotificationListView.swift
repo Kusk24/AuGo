@@ -4,6 +4,7 @@ import SwiftUI
 struct NotificationListView: View {
     @EnvironmentObject var notificationManager: NotificationManager
     @Environment(\.dismiss) var dismiss
+    @State private var selectedNotification: PushNotification?
     
     var body: some View {
         NavigationView {
@@ -33,8 +34,13 @@ struct NotificationListView: View {
                             ForEach(notificationManager.receivedNotifications) { notification in
                                 NotificationCard(notification: notification)
                                     .onTapGesture {
-                                        notificationManager.handleNotificationTap(notification)
-                                        dismiss()
+                                        Task {
+                                            if !notification.isRead {
+                                                await notificationManager.markNotificationAsRead(notification.id)
+                                            }
+                                            let latestNotification = notificationManager.receivedNotifications.first(where: { $0.id == notification.id }) ?? notification
+                                            selectedNotification = latestNotification
+                                        }
                                     }
                             }
                         }
@@ -44,6 +50,30 @@ struct NotificationListView: View {
             }
             .navigationTitle("Notifications")
             .navigationBarTitleDisplayMode(.inline)
+            .alert(item: $selectedNotification) { notification in
+                if notification.isRead {
+                    return Alert(
+                        title: Text(notification.title),
+                        message: Text(notification.body),
+                        primaryButton: .default(Text("Mark as Unread")) {
+                            Task {
+                                await notificationManager.markNotificationAsUnread(notification.id)
+                            }
+                        },
+                        secondaryButton: .cancel(Text("Close"))
+                    )
+                }
+                return Alert(
+                    title: Text(notification.title),
+                    message: Text(notification.body),
+                    primaryButton: .default(Text("Mark as Unread")) {
+                        Task {
+                            await notificationManager.markNotificationAsUnread(notification.id)
+                        }
+                    },
+                    secondaryButton: .cancel(Text("Close"))
+                )
+            }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
@@ -78,7 +108,7 @@ struct NotificationCard: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Image(systemName: "bell.fill")
-                    .foregroundColor(Color.Brand.primary)
+                    .foregroundColor(notification.isRead ? Color.Brand.primary.opacity(0.65) : .red)
                     .font(.system(size: 16))
                 
                 Text(notification.title)
@@ -86,6 +116,12 @@ struct NotificationCard: View {
                     .foregroundColor(.primary)
                 
                 Spacer()
+
+                if !notification.isRead {
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 8, height: 8)
+                }
                 
                 Text(timeAgo)
                     .font(.caption)
@@ -100,7 +136,7 @@ struct NotificationCard: View {
         .padding()
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(Color.Brand.surface)
+                .fill(notification.isRead ? Color.Brand.surface : Color.Brand.surface.opacity(0.92))
                 .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
         )
     }

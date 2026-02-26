@@ -17,6 +17,10 @@ class NotificationManager: NSObject, ObservableObject {
     private var userNotificationsListener: ListenerRegistration?
     private var listeningUserID: String?
     private static let notificationsEnabledKey = "notifications_enabled"
+
+    var unreadCount: Int {
+        receivedNotifications.filter { !$0.isRead }.count
+    }
     
     static let shared = NotificationManager()
     
@@ -80,6 +84,43 @@ class NotificationManager: NSObject, ObservableObject {
         }
         attachUserNotificationsListener(userId: userId, useOrderedQuery: true)
     }
+    
+    // MARK: - Send Local Notification
+    func sendLocalNotification(title: String, body: String, identifier: String = UUID().uuidString) {
+        guard notificationsEnabled, notificationPermissionGranted else {
+            print("🔕 Local notification skipped: notifications disabled or permission not granted")
+            return
+        }
+        
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        
+        // Trigger immediately
+        let request = UNNotificationRequest(
+            identifier: identifier,
+            content: content,
+            trigger: nil
+        )
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                print("❌ Failed to send local notification: \(error.localizedDescription)")
+            } else {
+                print("✅ Local notification sent: \(title)")
+            }
+        }
+    }
+    
+    // MARK: - Test Notification (for debugging)
+    func sendTestNotification() {
+        sendLocalNotification(
+            title: "Test Notification",
+            body: "If you see this, local notifications are working! 🎉",
+            identifier: "test_\(UUID().uuidString)"
+        )
+    }
 
     private func attachUserNotificationsListener(userId: String, useOrderedQuery: Bool) {
         userNotificationsListener?.remove()
@@ -88,6 +129,8 @@ class NotificationManager: NSObject, ObservableObject {
         let query = useOrderedQuery
             ? baseQuery.order(by: "createdAt", descending: true).limit(to: 100)
             : baseQuery.limit(to: 200)
+        
+        var isFirstLoad = true
 
         userNotificationsListener = query.addSnapshotListener { [weak self] snapshot, error in
                 guard let self else { return }
@@ -106,29 +149,45 @@ class NotificationManager: NSObject, ObservableObject {
                     if !useOrderedQuery {
                         self.receivedNotifications.removeAll()
                     }
+                    
                     for doc in documents {
                         let data = doc.data()
                         let title = (data["title"] as? String) ?? "Notification"
-                        let body = (data["body"] as? String) ?? ""
-                        let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
-                        self.upsertNotification(
-                            PushNotification(
-                                id: doc.documentID,
-                                title: title,
-                                body: body,
-                                data: data.reduce(into: [AnyHashable: Any]()) { result, item in
-                                    result[item.key] = item.value
-                                },
-                                receivedAt: createdAt
-                            )
+                        let body = (data["body"] as? String) ?? (data["message"] as? String) ?? ""
+                        let createdAt = self.parseFirestoreDate(data["createdAt"]) ?? Date()
+                        let isRead = data["isRead"] as? Bool ?? false
+                        
+                        let notification = PushNotification(
+                            id: doc.documentID,
+                            title: title,
+                            body: body,
+                            data: data.reduce(into: [AnyHashable: Any]()) { result, item in
+                                result[item.key] = item.value
+                            },
+                            receivedAt: createdAt,
+                            isRead: isRead,
+                            isRemote: true
                         )
+                        
+                        // Check if this is a new notification
+                        let isNewNotification = !self.receivedNotifications.contains(where: { $0.id == notification.id })
+                        
+                        self.upsertNotification(notification)
+                        
+                        // Send local notification for new items (but not on first load)
+                        if !isFirstLoad && isNewNotification {
+                            self.sendLocalNotification(title: title, body: body, identifier: doc.documentID)
+                        }
                     }
+                    
                     if !useOrderedQuery {
                         self.receivedNotifications.sort { $0.receivedAt > $1.receivedAt }
                         if self.receivedNotifications.count > 100 {
                             self.receivedNotifications = Array(self.receivedNotifications.prefix(100))
                         }
                     }
+                    
+                    isFirstLoad = false
                 }
             }
     }
@@ -163,15 +222,19 @@ class NotificationManager: NSObject, ObservableObject {
         data: [AnyHashable: Any] = [:]
     ) {
         guard notificationsEnabled else { return }
-        upsertNotification(
-            PushNotification(
-                id: id,
-                title: title,
-                body: body,
-                data: data,
-                receivedAt: Date()
-            )
+        
+        let notification = PushNotification(
+            id: id,
+            title: title,
+            body: body,
+            data: data,
+            receivedAt: Date()
         )
+        
+        upsertNotification(notification)
+        
+        // Also send a local notification
+        sendLocalNotification(title: title, body: body, identifier: id)
     }
 
     private func upsertNotification(_ notification: PushNotification) {
@@ -191,6 +254,74 @@ class NotificationManager: NSObject, ObservableObject {
         print("📱 Notification tapped: \(notification.title)")
         // You can add navigation logic here based on notification type
         // For example, navigate to specific post, announcement, etc.
+    }
+
+    func markNotificationAsRead(_ notificationId: String) async {
+        guard !notificationId.isEmpty else { return }
+
+        var shouldSyncToFirestore = false
+        if let idx = receivedNotifications.firstIndex(where: { $0.id == notificationId }) {
+            if receivedNotifications[idx].isRead { return }
+            shouldSyncToFirestore = receivedNotifications[idx].isRemote
+            receivedNotifications[idx].isRead = true
+        }
+
+        guard shouldSyncToFirestore else { return }
+
+        do {
+            try await db.collection("user_notifications").document(notificationId).setData([
+                "isRead": true,
+                "readAt": Timestamp(date: Date())
+            ], merge: true)
+        } catch {
+            // Non-fatal: local state already updated.
+            print("⚠️ Failed to mark notification as read: \(error.localizedDescription)")
+        }
+    }
+
+    func markNotificationAsUnread(_ notificationId: String) async {
+        guard !notificationId.isEmpty else { return }
+
+        var shouldSyncToFirestore = false
+        if let idx = receivedNotifications.firstIndex(where: { $0.id == notificationId }) {
+            if !receivedNotifications[idx].isRead { return }
+            shouldSyncToFirestore = receivedNotifications[idx].isRemote
+            receivedNotifications[idx].isRead = false
+        }
+
+        guard shouldSyncToFirestore else { return }
+
+        do {
+            try await db.collection("user_notifications").document(notificationId).setData([
+                "isRead": false,
+                "updatedAt": Timestamp(date: Date())
+            ], merge: true)
+        } catch {
+            print("⚠️ Failed to mark notification as unread: \(error.localizedDescription)")
+        }
+    }
+
+    private func parseFirestoreDate(_ value: Any?) -> Date? {
+        if let timestamp = value as? Timestamp {
+            return timestamp.dateValue()
+        }
+        if let date = value as? Date {
+            return date
+        }
+        if let seconds = value as? TimeInterval {
+            return Date(timeIntervalSince1970: seconds)
+        }
+        if let seconds = value as? Int {
+            return Date(timeIntervalSince1970: TimeInterval(seconds))
+        }
+        if let dateString = value as? String {
+            let isoWithFraction = ISO8601DateFormatter()
+            isoWithFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = isoWithFraction.date(from: dateString) { return date }
+            let iso = ISO8601DateFormatter()
+            if let date = iso.date(from: dateString) { return date }
+        }
+        return nil
     }
 }
 
@@ -271,18 +402,22 @@ struct PushNotification: Identifiable, Codable {
     let body: String
     let data: [AnyHashable: Any]
     let receivedAt: Date
-    
-    init(id: String, title: String, body: String, data: [AnyHashable: Any], receivedAt: Date = Date()) {
+    var isRead: Bool
+    let isRemote: Bool
+
+    init(id: String, title: String, body: String, data: [AnyHashable: Any], receivedAt: Date = Date(), isRead: Bool = false, isRemote: Bool = false) {
         self.id = id
         self.title = title
         self.body = body
         self.data = data
         self.receivedAt = receivedAt
+        self.isRead = isRead
+        self.isRemote = isRemote
     }
     
     // Custom coding keys to handle [AnyHashable: Any]
     enum CodingKeys: String, CodingKey {
-        case id, title, body, receivedAt
+        case id, title, body, receivedAt, isRead, isRemote
     }
     
     init(from decoder: Decoder) throws {
@@ -291,6 +426,8 @@ struct PushNotification: Identifiable, Codable {
         title = try container.decode(String.self, forKey: .title)
         body = try container.decode(String.self, forKey: .body)
         receivedAt = try container.decode(Date.self, forKey: .receivedAt)
+        isRead = try container.decodeIfPresent(Bool.self, forKey: .isRead) ?? false
+        isRemote = try container.decodeIfPresent(Bool.self, forKey: .isRemote) ?? false
         data = [:] // Default empty for decoding
     }
     
@@ -300,5 +437,7 @@ struct PushNotification: Identifiable, Codable {
         try container.encode(title, forKey: .title)
         try container.encode(body, forKey: .body)
         try container.encode(receivedAt, forKey: .receivedAt)
+        try container.encode(isRead, forKey: .isRead)
+        try container.encode(isRemote, forKey: .isRemote)
     }
 }

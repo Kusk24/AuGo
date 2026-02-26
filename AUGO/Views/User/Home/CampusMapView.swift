@@ -59,12 +59,17 @@ struct CampusMapView: View {
     @State private var arSpawnsListener: ListenerRegistration?
 
     private var defaultMapRegion: MKCoordinateRegion {
-        MKCoordinateRegion(
-            center: viewModel.campusRegion.center,
-            span: MKCoordinateSpan(
-                latitudeDelta: viewModel.campusRegion.span.latitudeDelta * 1.15,
-                longitudeDelta: viewModel.campusRegion.span.longitudeDelta * 1.15
-            )
+        let span = MKCoordinateSpan(
+            latitudeDelta: viewModel.campusRegion.span.latitudeDelta * 1.15,
+            longitudeDelta: viewModel.campusRegion.span.longitudeDelta * 1.15
+        )
+        let shiftedCenter = CLLocationCoordinate2D(
+            latitude: viewModel.campusRegion.center.latitude,
+            longitude: viewModel.campusRegion.center.longitude + (span.longitudeDelta * 0.075)
+        )
+        return MKCoordinateRegion(
+            center: shiftedCenter,
+            span: span
         )
     }
     
@@ -314,7 +319,7 @@ struct CampusMapView: View {
     }
     
     private var notificationIcon: some View {
-        let hasUnread = !notificationManager.receivedNotifications.isEmpty || announcementCenter.unreadCount > 0
+        let hasUnread = notificationManager.unreadCount > 0
         return Image(systemName: hasUnread ? "bell.badge.fill" : "bell.fill")
             .symbolRenderingMode(hasUnread ? .palette : .monochrome)
             .foregroundStyle(
@@ -332,7 +337,7 @@ struct CampusMapView: View {
                         Button {
                             specialOnlyFilterEnabled.toggle()
                         } label: {
-                            Text("Special Only")
+                            Text("Special Post Only")
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundColor(specialOnlyFilterEnabled ? .white : .primary)
                                 .frame(maxWidth: .infinity)
