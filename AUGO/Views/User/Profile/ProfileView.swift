@@ -3,6 +3,8 @@ import FirebaseAuth
 import FirebaseCore
 import FirebaseStorage
 import FirebaseFirestore
+import PhotosUI
+import UIKit
 
 struct ProfileView: View {
     
@@ -19,10 +21,18 @@ struct ProfileView: View {
     @State private var selectedCaptureRarity: String?
     @State private var selectedCaptureDescription: String?
     @State private var spawnMetadataByID: [String: ARSpawnMetadata] = [:]
+    @State private var selectedProfilePhotoItem: PhotosPickerItem?
+    @State private var isUploadingProfilePhoto = false
     
     // Computed properties for real user data
     private var userName: String {
         authManager.userProfile?.nickname ?? "User"
+    }
+
+    private var profileImageURL: URL? {
+        guard let raw = authManager.userProfile?.profileImageURL?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else { return nil }
+        return URL(string: raw)
     }
     
     private var fullName: String {
@@ -109,16 +119,38 @@ struct ProfileView: View {
 
                     // MARK: Avatar + name
                     VStack(spacing: 12) {
-                        // Avatar with initials
-                        ZStack {
-                            Circle()
-                                .fill(Color.Brand.primary.opacity(0.2))
-                                .frame(width: 96, height: 96)
-                            
-                            Text(String(userName.prefix(1)).uppercased())
-                                .font(.system(size: 40, weight: .bold))
-                                .foregroundColor(Color.Brand.primary)
+                        PhotosPicker(selection: $selectedProfilePhotoItem, matching: .images) {
+                            ZStack(alignment: .bottomTrailing) {
+                                UserAvatarView(
+                                    imageURL: profileImageURL,
+                                    fallbackText: userName,
+                                    size: 96,
+                                    fillColor: Color.Brand.primary.opacity(0.2),
+                                    textColor: Color.Brand.primary
+                                )
+
+                                Circle()
+                                    .fill(Color.Brand.primary)
+                                    .frame(width: 28, height: 28)
+                                    .overlay(
+                                        Image(systemName: "camera.fill")
+                                            .font(.system(size: 13, weight: .bold))
+                                            .foregroundColor(.white)
+                                    )
+                                    .offset(x: 4, y: 2)
+
+                                if isUploadingProfilePhoto {
+                                    Circle()
+                                        .fill(.black.opacity(0.35))
+                                        .frame(width: 96, height: 96)
+                                        .overlay(
+                                            ProgressView()
+                                                .tint(.white)
+                                        )
+                                }
+                            }
                         }
+                        .buttonStyle(.plain)
 
                         Text(userName)
                             .font(.title3.weight(.bold))
@@ -408,6 +440,10 @@ struct ProfileView: View {
         .onChange(of: authManager.userProfile?.score) { _, _ in
             refreshUserRank()
         }
+        .onChange(of: selectedProfilePhotoItem) { _, newItem in
+            guard let newItem else { return }
+            Task { await uploadProfilePhoto(from: newItem) }
+        }
         .toolbar(.visible, for: .navigationBar)
     }
     
@@ -476,6 +512,43 @@ struct ProfileView: View {
         await MainActor.run { spawnMetadataByID = merged }
     }
 
+    private func uploadProfilePhoto(from item: PhotosPickerItem) async {
+        guard let uid = authManager.user?.uid else { return }
+        await MainActor.run { isUploadingProfilePhoto = true }
+        defer {
+            Task { @MainActor in
+                isUploadingProfilePhoto = false
+                selectedProfilePhotoItem = nil
+            }
+        }
+
+        do {
+            guard let originalData = try await item.loadTransferable(type: Data.self) else {
+                await MainActor.run {
+                    activeAlert = ProfileAlertItem(kind: .coins("Failed to read selected image."))
+                }
+                return
+            }
+
+            let uploadData: Data
+            if let image = UIImage(data: originalData),
+               let jpeg = image.jpegData(compressionQuality: 0.82) {
+                uploadData = jpeg
+            } else {
+                uploadData = originalData
+            }
+
+            _ = try await authManager.uploadProfileImage(uid: uid, imageData: uploadData)
+            await MainActor.run {
+                activeAlert = ProfileAlertItem(kind: .coins("Profile picture updated."))
+            }
+        } catch {
+            await MainActor.run {
+                activeAlert = ProfileAlertItem(kind: .coins("Failed to upload profile picture: \(error.localizedDescription)"))
+            }
+        }
+    }
+
 }
 
 private struct ARSpawnMetadata {
@@ -532,6 +605,53 @@ private struct ProfileStatCard: View {
         .padding(.vertical, 16)
         .background(Color.Brand.coin)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+private struct UserAvatarView: View {
+    let imageURL: URL?
+    let fallbackText: String
+    let size: CGFloat
+    let fillColor: Color
+    let textColor: Color
+
+    private var fallbackInitial: String {
+        String(fallbackText.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1)).uppercased()
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(fillColor)
+                .frame(width: size, height: size)
+
+            if let imageURL {
+                AsyncImage(url: imageURL) { phase in
+                    switch phase {
+                    case .empty:
+                        ProgressView()
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .failure:
+                        fallbackContent
+                    @unknown default:
+                        fallbackContent
+                    }
+                }
+                .frame(width: size, height: size)
+                .clipShape(Circle())
+            } else {
+                fallbackContent
+            }
+        }
+    }
+
+    private var fallbackContent: some View {
+        Text(fallbackInitial.isEmpty ? "U" : fallbackInitial)
+            .font(.system(size: size * 0.42, weight: .bold))
+            .foregroundColor(textColor)
     }
 }
 

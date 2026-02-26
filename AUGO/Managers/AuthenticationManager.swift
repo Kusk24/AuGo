@@ -6,6 +6,7 @@ import FirebaseFirestore
 import GoogleSignIn
 import UIKit
 import FirebaseCore
+import FirebaseStorage
 
 enum AccountRole {
     case user
@@ -645,7 +646,9 @@ class AuthenticationManager: ObservableObject {
             dailyPostCount: (data["dailyPostCount"] as? Int) ?? 0,
             dailyPostCountDate: parseFirestoreDate(data["dailyPostCountDate"]),
             lastCoinGrantDate: parseFirestoreDate(data["lastCoinGrantDate"]),
-            arCapturedCharacters: arCapturedCharacters
+            arCapturedCharacters: arCapturedCharacters,
+            profileImageURL: data["profileImageURL"] as? String,
+            profileImagePath: data["profileImagePath"] as? String
         )
     }
     
@@ -707,7 +710,7 @@ class AuthenticationManager: ObservableObject {
         isLoading = true
         errorMessage = nil
         do {
-            let data: [String: Any] = [
+            var data: [String: Any] = [
                 "studentID": profile.studentID,
                 "name": profile.name,
                 "nickname": profile.nickname,
@@ -752,6 +755,15 @@ class AuthenticationManager: ObservableObject {
                     return payload
                 }
             ]
+
+            if let profileImageURL = profile.profileImageURL?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !profileImageURL.isEmpty {
+                data["profileImageURL"] = profileImageURL
+            }
+            if let profileImagePath = profile.profileImagePath?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !profileImagePath.isEmpty {
+                data["profileImagePath"] = profileImagePath
+            }
             try await db.collection("users").document(uid).setData(data, merge: true)
             var profileWithId = profile
             profileWithId.id = uid
@@ -763,6 +775,46 @@ class AuthenticationManager: ObservableObject {
             throw error
         }
         isLoading = false
+    }
+
+    func uploadProfileImage(uid: String, imageData: Data) async throws -> String {
+        guard !uid.isEmpty else { throw NSError(domain: "AuthenticationManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing user ID"]) }
+        guard !imageData.isEmpty else { throw NSError(domain: "AuthenticationManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid image data"]) }
+
+        let timestamp = Int(Date().timeIntervalSince1970 * 1000)
+        let imagePath = "profile_pictures/\(uid)/\(timestamp).jpg"
+        let imageRef = Storage.storage().reference(withPath: imagePath)
+
+        let metadata = StorageMetadata()
+        metadata.contentType = "image/jpeg"
+
+        _ = try await imageRef.putDataAsync(imageData, metadata: metadata)
+        let downloadURL = try await imageRef.downloadURL()
+
+        let oldPath = userProfile?.profileImagePath?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        try await db.collection("users").document(uid).setData([
+            "profileImageURL": downloadURL.absoluteString,
+            "profileImagePath": imagePath,
+            "updatedAt": Timestamp(date: Date())
+        ], merge: true)
+
+        if let oldPath, !oldPath.isEmpty, oldPath != imagePath {
+            do {
+                try await Storage.storage().reference(withPath: oldPath).delete()
+            } catch {
+                // Ignore cleanup failure to avoid breaking user flow.
+                print("⚠️ Failed to delete old profile image: \(error.localizedDescription)")
+            }
+        }
+
+        if var profile = userProfile {
+            profile.profileImageURL = downloadURL.absoluteString
+            profile.profileImagePath = imagePath
+            userProfile = profile
+        }
+
+        return downloadURL.absoluteString
     }
     
     // MARK: - Sign Out

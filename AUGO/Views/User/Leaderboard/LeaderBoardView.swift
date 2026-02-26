@@ -9,6 +9,7 @@ struct Leader: Identifiable {
     let nickname: String
     let totalPoints: Int
     let rank: Int
+    let profileImageURL: String?
     
     init(user: User, rank: Int) {
         self.id = user.id ?? UUID().uuidString
@@ -16,6 +17,7 @@ struct Leader: Identifiable {
         self.nickname = user.nickname
         self.totalPoints = user.score
         self.rank = rank
+        self.profileImageURL = user.profileImageURL
     }
 }
 
@@ -168,7 +170,9 @@ struct LeaderboardView: View {
                             lastWarningDate: (data["lastWarningDate"] as? Timestamp)?.dateValue(),
                             warningCount: data["warningCount"] as? Int ?? 0,
                             status: User.UserStatus(rawValue: statusRaw) ?? .active,
-                            score: Self.parseScore(data["score"])
+                            score: Self.parseScore(data["score"]),
+                            profileImageURL: data["profileImageURL"] as? String,
+                            profileImagePath: data["profileImagePath"] as? String
                         )
 
                         print("✅ Parsed user: \(resolvedNickname) with score: \(user.score)")
@@ -219,6 +223,13 @@ private extension Leader {
     var avatarInitial: String {
         String(displayName.prefix(1)).uppercased()
     }
+
+    var avatarURL: URL? {
+        guard let raw = profileImageURL?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            return nil
+        }
+        return URL(string: raw)
+    }
 }
 
 // MARK: - Top 3 Cards
@@ -246,10 +257,27 @@ private struct TopLeaderCardView: View {
                     Circle()
                         .fill(Color.Brand.primary.opacity(0.2))
                         .frame(width: highlight ? 70 : 60, height: highlight ? 70 : 60)
-                    
-                    Text(leader.avatarInitial)
-                        .font(.system(size: highlight ? 30 : 24, weight: .bold))
-                        .foregroundColor(Color.Brand.primary)
+
+                    if let avatarURL = leader.avatarURL {
+                        AsyncImage(url: avatarURL) { phase in
+                            switch phase {
+                            case .empty:
+                                ProgressView()
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                            case .failure:
+                                fallbackAvatar
+                            @unknown default:
+                                fallbackAvatar
+                            }
+                        }
+                        .frame(width: highlight ? 70 : 60, height: highlight ? 70 : 60)
+                        .clipShape(Circle())
+                    } else {
+                        fallbackAvatar
+                    }
                 }
                 .padding(.top, 12)
 
@@ -270,6 +298,12 @@ private struct TopLeaderCardView: View {
         }
         .frame(width: 110, height: 150)
     }
+
+    private var fallbackAvatar: some View {
+        Text(leader.avatarInitial)
+            .font(.system(size: highlight ? 30 : 24, weight: .bold))
+            .foregroundColor(Color.Brand.primary)
+    }
 }
 
 // MARK: - List Rows
@@ -284,9 +318,26 @@ private struct LeaderRowView: View {
                     .fill(Color.Brand.primary.opacity(0.2))
                     .frame(width: 46, height: 46)
 
-                Text(leader.avatarInitial)
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(Color.Brand.primary)
+                if let avatarURL = leader.avatarURL {
+                    AsyncImage(url: avatarURL) { phase in
+                        switch phase {
+                        case .empty:
+                            ProgressView()
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        case .failure:
+                            fallbackAvatar
+                        @unknown default:
+                            fallbackAvatar
+                        }
+                    }
+                    .frame(width: 46, height: 46)
+                    .clipShape(Circle())
+                } else {
+                    fallbackAvatar
+                }
             }
 
             VStack(alignment: .leading, spacing: 2) {
@@ -316,5 +367,11 @@ private struct LeaderRowView: View {
                 )
         )
         .padding(.vertical, 4)
+    }
+
+    private var fallbackAvatar: some View {
+        Text(leader.avatarInitial)
+            .font(.system(size: 18, weight: .bold))
+            .foregroundColor(Color.Brand.primary)
     }
 }

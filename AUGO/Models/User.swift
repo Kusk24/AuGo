@@ -41,6 +41,8 @@ struct User: Codable, Identifiable {
     var dailyPostCountDate: Date? = nil
     var lastCoinGrantDate: Date? = nil
     var arCapturedCharacters: [ARCapturedCharacter] = []
+    var profileImageURL: String? = nil
+    var profileImagePath: String? = nil
     
     enum UserStatus: String, Codable {
         case active
