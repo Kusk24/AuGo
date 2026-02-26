@@ -268,7 +268,7 @@ struct CreatePostView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Toggle(isOn: $enableEmojiPin) {
-                                Text("Post with emoji")
+                                Text("Post with emoji (Special Post)")
                                     .font(.subheadline.weight(.semibold))
                             }
                             .tint(Color.Brand.primary)
