@@ -402,6 +402,12 @@ struct ProfileView: View {
                     message: Text(message),
                     dismissButton: .cancel()
                 )
+            case .message(let title, let message):
+                return Alert(
+                    title: Text(title),
+                    message: Text(message),
+                    dismissButton: .default(Text("OK"))
+                )
             }
         }
         .sheet(item: $selectedCapturedCharacter, onDismiss: {
@@ -525,7 +531,7 @@ struct ProfileView: View {
         do {
             guard let originalData = try await item.loadTransferable(type: Data.self) else {
                 await MainActor.run {
-                    activeAlert = ProfileAlertItem(kind: .coins("Failed to read selected image."))
+                    activeAlert = ProfileAlertItem(kind: .message("Profile Picture", "Failed to read selected image."))
                 }
                 return
             }
@@ -540,11 +546,11 @@ struct ProfileView: View {
 
             _ = try await authManager.uploadProfileImage(uid: uid, imageData: uploadData)
             await MainActor.run {
-                activeAlert = ProfileAlertItem(kind: .coins("Profile picture updated."))
+                activeAlert = ProfileAlertItem(kind: .message("Profile Picture", "Profile picture updated."))
             }
         } catch {
             await MainActor.run {
-                activeAlert = ProfileAlertItem(kind: .coins("Failed to upload profile picture: \(error.localizedDescription)"))
+                activeAlert = ProfileAlertItem(kind: .message("Profile Picture", "Failed to upload profile picture: \(error.localizedDescription)"))
             }
         }
     }
@@ -561,6 +567,7 @@ private struct ProfileAlertItem: Identifiable {
         case logout
         case delete(Post)
         case coins(String)
+        case message(String, String)
     }
 
     let id = UUID()

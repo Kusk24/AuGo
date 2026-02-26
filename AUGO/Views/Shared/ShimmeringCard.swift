@@ -263,21 +263,47 @@ private final class DeviceTiltController: ObservableObject {
     @Published var pitch: Double = 0
 
     private let motionManager = CMMotionManager()
+    private var baselineRoll: Double?
+    private var baselinePitch: Double?
+    private let filterAlpha = 0.18
 
     func start() {
         guard motionManager.isDeviceMotionAvailable else { return }
+        baselineRoll = nil
+        baselinePitch = nil
+        roll = 0
+        pitch = 0
         motionManager.deviceMotionUpdateInterval = 1.0 / 60.0
         motionManager.startDeviceMotionUpdates(to: .main) { [weak self] motion, _ in
             guard let self, let motion else { return }
-            let clampedRoll = max(-1.1, min(1.1, motion.attitude.roll))
-            let clampedPitch = max(-1.1, min(1.1, motion.attitude.pitch))
-            self.roll = clampedRoll
-            self.pitch = clampedPitch
+            let rawRoll = max(-1.1, min(1.1, motion.attitude.roll))
+            let rawPitch = max(-1.1, min(1.1, motion.attitude.pitch))
+
+            // Calibrate neutral pose when device is not flat on a table.
+            // This makes the "rest position" match upright phone usage.
+            if self.baselineRoll == nil || self.baselinePitch == nil {
+                let isNearFlat = abs(motion.gravity.z) > 0.78
+                guard !isNearFlat else { return }
+                self.baselineRoll = rawRoll
+                self.baselinePitch = rawPitch
+                return
+            }
+
+            let deltaRoll = rawRoll - (self.baselineRoll ?? 0)
+            let deltaPitch = rawPitch - (self.baselinePitch ?? 0)
+            let clampedRoll = max(-0.9, min(0.9, deltaRoll))
+            let clampedPitch = max(-0.9, min(0.9, deltaPitch))
+
+            // Low-pass filter for smoother left/right and up/down movement.
+            self.roll = (self.roll * (1 - self.filterAlpha)) + (clampedRoll * self.filterAlpha)
+            self.pitch = (self.pitch * (1 - self.filterAlpha)) + (clampedPitch * self.filterAlpha)
         }
     }
 
     func stop() {
         motionManager.stopDeviceMotionUpdates()
+        baselineRoll = nil
+        baselinePitch = nil
         roll = 0
         pitch = 0
     }

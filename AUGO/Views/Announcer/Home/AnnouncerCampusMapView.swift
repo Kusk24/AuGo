@@ -20,7 +20,7 @@ struct AnnouncerCampusMapView: View {
         let span = campusMapViewModel.campusRegion.span
         let shiftedCenter = CLLocationCoordinate2D(
             latitude: campusMapViewModel.campusRegion.center.latitude,
-            longitude: campusMapViewModel.campusRegion.center.longitude + (span.longitudeDelta * 0.075)
+            longitude: campusMapViewModel.campusRegion.center.longitude - (span.longitudeDelta * 0.05)
         )
         return MKCoordinateRegion(center: shiftedCenter, span: span)
     }

@@ -65,7 +65,7 @@ struct CampusMapView: View {
         )
         let shiftedCenter = CLLocationCoordinate2D(
             latitude: viewModel.campusRegion.center.latitude,
-            longitude: viewModel.campusRegion.center.longitude + (span.longitudeDelta * 0.075)
+            longitude: viewModel.campusRegion.center.longitude - (span.longitudeDelta * 0.05)
         )
         return MKCoordinateRegion(
             center: shiftedCenter,
@@ -337,7 +337,7 @@ struct CampusMapView: View {
                         Button {
                             specialOnlyFilterEnabled.toggle()
                         } label: {
-                            Text("Special Post Only")
+                            Text("Show Special Post Only")
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundColor(specialOnlyFilterEnabled ? .white : .primary)
                                 .frame(maxWidth: .infinity)
@@ -578,7 +578,7 @@ struct CampusMapView: View {
 
     private func dotSize() -> CGFloat {
         // Uniform AR marker size for consistency across all characters.
-        16
+        11.2
     }
 
     private func startARSpawnsListener() {
