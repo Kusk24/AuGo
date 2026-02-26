@@ -17,13 +17,6 @@ private enum CampusMapSheet: Identifiable {
     }
 }
 
-private enum PostDisplayMode: String, CaseIterable, Identifiable {
-    case normal = "Normal Posts"
-    case special = "Special Posts"
-
-    var id: String { rawValue }
-}
-
 struct CampusMapView: View {
     @Binding var showAnnouncement: Bool
 
@@ -60,7 +53,7 @@ struct CampusMapView: View {
     @State private var selectedCategories: Set<Post.PostCategory> = Set([
         .casual, .lostFound, .complaint, .event, .question, .arChallenge
     ])
-    @State private var postDisplayMode: PostDisplayMode = .normal
+    @State private var specialOnlyFilterEnabled = false
     @State private var displayClusters: [PostCluster] = []
     @State private var arSpawnDots: [ARSpawnMapDot] = []
     @State private var arSpawnsListener: ListenerRegistration?
@@ -78,7 +71,9 @@ struct CampusMapView: View {
     private func updateClustersAndMapping(posts: [Post]? = nil) {
         let postsToUse = posts ?? postManager.allPosts
         let filtered = postsToUse.filter { selectedCategories.contains($0.category) }
-        let modeFiltered = filtered.filter { postDisplayMode == .special ? isSpecialEmojiPost($0) : !isSpecialEmojiPost($0) }
+        let modeFiltered = specialOnlyFilterEnabled
+            ? filtered.filter { isSpecialEmojiPost($0) }
+            : filtered
         
         let userIDs = Set(modeFiltered.map(\.userId))
         let missingUserIDs = userIDs.filter { userDisplayNames[$0] == nil && !loadingUserDisplayNameIDs.contains($0) }
@@ -90,7 +85,7 @@ struct CampusMapView: View {
             }
         }
 
-        let (clusters, mapping) = postDisplayMode == .special
+        let (clusters, mapping) = specialOnlyFilterEnabled
             ? createSpecialClusters(from: modeFiltered)
             : createClusters(from: modeFiltered)
 
@@ -334,20 +329,18 @@ struct CampusMapView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
-                        ForEach(PostDisplayMode.allCases) { mode in
-                            Button {
-                                postDisplayMode = mode
-                            } label: {
-                                Text(mode.rawValue)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundColor(postDisplayMode == mode ? .white : .primary)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 10)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                            .fill(postDisplayMode == mode ? Color.Brand.primary : Color.Brand.surfaceMuted)
-                                    )
-                            }
+                        Button {
+                            specialOnlyFilterEnabled.toggle()
+                        } label: {
+                            Text("Special Only")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(specialOnlyFilterEnabled ? .white : .primary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(specialOnlyFilterEnabled ? Color.Brand.primary : Color.Brand.surfaceMuted)
+                                )
                         }
                     }
                     .frame(width: 220)
@@ -687,7 +680,7 @@ struct CampusMapView: View {
                         mapView
                         if displayClusters.isEmpty {
                             VStack(spacing: 0) {
-                                Text(postDisplayMode == .special ? "No emoji posts nearby" : "No posts nearby")
+                                Text(specialOnlyFilterEnabled ? "No emoji posts nearby" : "No posts nearby")
                                     .font(.footnote)
                                     .padding(8)
                                     .background(.ultraThinMaterial)
@@ -730,7 +723,7 @@ struct CampusMapView: View {
         .onChange(of: selectedCategories) { _, _ in
             updateClustersAndMapping()
         }
-        .onChange(of: postDisplayMode) { _, _ in
+        .onChange(of: specialOnlyFilterEnabled) { _, _ in
             updateClustersAndMapping()
         }
         .toolbar {
