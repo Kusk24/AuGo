@@ -88,6 +88,19 @@ struct ARCameraView: View {
                         .foregroundColor(viewModel.contentMode == .posts ? .white : Color.Brand.coin)
                 }
 
+                if viewModel.contentMode == .character, let guidance = viewModel.directionGuidanceText {
+                    HStack(spacing: 8) {
+                        Image(systemName: "location.north.fill")
+                            .font(.headline.weight(.bold))
+                            .rotationEffect(.degrees(viewModel.directionArrowAngle))
+                            .foregroundColor(Color.Brand.primary)
+                            .frame(width: 20)
+                        Text(guidance)
+                            .font(.footnote.weight(.semibold))
+                            .foregroundColor(.white)
+                    }
+                }
+
                 if viewModel.contentMode == .character && viewModel.canRenderModel {
                     Text(viewModel.catchInstructionText)
                         .font(.footnote)
@@ -111,6 +124,34 @@ struct ARCameraView: View {
                     .padding(.horizontal, 16)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                     .padding(.bottom, 20)
+            }
+
+            if viewModel.contentMode == .character, let guidance = viewModel.directionGuidanceText {
+                VStack(spacing: 8) {
+                    ZStack {
+                        Circle()
+                            .fill(.black.opacity(0.45))
+                            .frame(width: 84, height: 84)
+                        Circle()
+                            .stroke(Color.white.opacity(0.22), lineWidth: 1)
+                            .frame(width: 84, height: 84)
+                        Image(systemName: "location.north.fill")
+                            .font(.system(size: 34, weight: .bold))
+                            .foregroundColor(Color.Brand.primary)
+                            .rotationEffect(.degrees(viewModel.directionArrowAngle))
+                    }
+
+                    Text(guidance)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(.black.opacity(0.45))
+                        .clipShape(Capsule())
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .padding(.bottom, 130)
+                .transition(.opacity)
             }
 
             if let celebration = viewModel.captureCelebration {
@@ -746,6 +787,8 @@ private final class ARCameraViewModel: ObservableObject {
     @Published var rewardInfoText: String?
     @Published var catchInstructionText = "Get inside catch radius to start combo"
     @Published var characterRangeText = "Character range: 100 m"
+    @Published var directionGuidanceText: String?
+    @Published var directionArrowAngle: Double = 0
     @Published var nearbyPosts: [ARNearbyPost] = []
     @Published var nearbyAnnouncements: [ARNearbyAnnouncement] = []
     @Published var showPostsInCharacter = false
@@ -768,7 +811,7 @@ private final class ARCameraViewModel: ObservableObject {
     private let comboWindowSeconds: TimeInterval = 2.0
     private var isCaptureProcessing = false
     private let maxRenderableHorizontalAccuracy: CLLocationAccuracy = 30
-    private let maxCatchHorizontalAccuracy: CLLocationAccuracy = 15
+    private let maxCatchHorizontalAccuracy: CLLocationAccuracy = 20
     private var arAdminConfigCache: ARAdminConfiguration = .default
     private var lastARAdminConfigFetch: Date?
     private var photoURLCache: [String: URL] = [:]
@@ -805,6 +848,8 @@ private final class ARCameraViewModel: ObservableObject {
             statusText = "Locating nearest character..."
             distanceText = nil
             rewardInfoText = nil
+            directionGuidanceText = nil
+            directionArrowAngle = 0
             characterRangeText = "Character range: 100 m"
             if showPostsInCharacter {
                 startNearbyPostsMonitoring()
@@ -830,6 +875,8 @@ private final class ARCameraViewModel: ObservableObject {
             activeSpawn = nil
             rewardInfoText = "Nearest: none"
             distanceText = nil
+            directionGuidanceText = nil
+            directionArrowAngle = 0
             smoothedDistanceMeters = nil
             titleText = "Nearby Posts"
             statusText = "Posts in range: 0"
@@ -1016,6 +1063,7 @@ private final class ARCameraViewModel: ObservableObject {
             } else {
                 distanceText = "Waiting for GPS signal..."
             }
+            updateDirectionGuidance(for: spawn)
 
             modelEntity = try await loadModelEntity(from: spawn.assetPath)
             if Task.isCancelled { return }
@@ -1037,6 +1085,8 @@ private final class ARCameraViewModel: ObservableObject {
                 catchInstructionText = "Try again later"
                 rewardInfoText = nil
                 distanceText = nil
+                directionGuidanceText = nil
+                directionArrowAngle = 0
                 characterRangeText = "Character range: 100 m"
                 canRenderModel = false
                 renderSpawnID = nil
@@ -1045,6 +1095,8 @@ private final class ARCameraViewModel: ObservableObject {
                 statusText = "No active AR spawns"
                 rewardInfoText = nil
                 distanceText = nil
+                directionGuidanceText = nil
+                directionArrowAngle = 0
                 characterRangeText = "Character range: 100 m"
                 canRenderModel = false
                 renderSpawnID = nil
@@ -1149,8 +1201,11 @@ private final class ARCameraViewModel: ObservableObject {
             renderSpawnID = nil
             statusText = "Waiting for accurate location..."
             distanceText = "Waiting for GPS signal..."
+            updateDirectionGuidance(for: spawn)
             return
         }
+
+        updateDirectionGuidance(for: spawn)
 
         if let location = locationManager.lastLocation,
            location.horizontalAccuracy <= 0 || location.horizontalAccuracy > maxRenderableHorizontalAccuracy {
@@ -1188,6 +1243,67 @@ private final class ARCameraViewModel: ObservableObject {
             rewardInfoText = "Nearest: \(spawn.title) • +\(formatCoins(spawn.coinValue)) coins • +\(spawn.pointValue) points"
             catchInstructionText = "Hidden until reveal radius"
         }
+    }
+
+    private func updateDirectionGuidance(for spawn: ARSpawn) {
+        guard let userLocation = locationManager.lastLocation else {
+            directionGuidanceText = "Looking for heading..."
+            directionArrowAngle = 0
+            return
+        }
+
+        let target = spawn.location.coordinate
+        let source = userLocation.coordinate
+        let bearing = bearingDegrees(from: source, to: target)
+
+        guard let heading = locationManager.headingDegrees else {
+            directionGuidanceText = "Move phone around to find direction"
+            directionArrowAngle = 0
+            return
+        }
+
+        let relative = normalizedSignedDegrees(bearing - heading)
+        directionArrowAngle = relative
+        let turnHint = turnHintText(for: relative)
+        directionGuidanceText = "Nearest direction: \(turnHint)"
+    }
+
+    private func turnHintText(for signedAngle: Double) -> String {
+        let magnitude = abs(signedAngle)
+        if magnitude < 12 {
+            return "ahead"
+        }
+        if signedAngle > 0 {
+            if magnitude > 120 { return "turn around (right)" }
+            return String(format: "turn right %.0f°", magnitude)
+        } else {
+            if magnitude > 120 { return "turn around (left)" }
+            return String(format: "turn left %.0f°", magnitude)
+        }
+    }
+
+    private func bearingDegrees(from source: CLLocationCoordinate2D, to target: CLLocationCoordinate2D) -> Double {
+        let lat1 = source.latitude * .pi / 180
+        let lon1 = source.longitude * .pi / 180
+        let lat2 = target.latitude * .pi / 180
+        let lon2 = target.longitude * .pi / 180
+        let dLon = lon2 - lon1
+        let y = sin(dLon) * cos(lat2)
+        let x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
+        let angle = atan2(y, x) * 180 / .pi
+        return normalizedDegrees(angle)
+    }
+
+    private func normalizedDegrees(_ degrees: Double) -> Double {
+        let value = degrees.truncatingRemainder(dividingBy: 360)
+        return value >= 0 ? value : value + 360
+    }
+
+    private func normalizedSignedDegrees(_ degrees: Double) -> Double {
+        var value = degrees.truncatingRemainder(dividingBy: 360)
+        if value > 180 { value -= 360 }
+        if value < -180 { value += 360 }
+        return value
     }
 
     private func startDistanceMonitoring() {

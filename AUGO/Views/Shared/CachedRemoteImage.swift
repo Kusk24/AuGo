@@ -24,11 +24,42 @@ struct CachedRemoteImage<Content: View, Placeholder: View>: View {
                 content(Image(uiImage: image))
             } else {
                 placeholder()
+                    .modifier(SkeletonShimmer())
             }
         }
         .task(id: resolvedCacheKey) {
             await loader.load(url: url, cacheKey: resolvedCacheKey)
         }
+    }
+}
+
+private struct SkeletonShimmer: ViewModifier {
+    @State private var shimmerOffset: CGFloat = -1.2
+
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                GeometryReader { proxy in
+                    let width = max(proxy.size.width, 1)
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.00),
+                            Color.white.opacity(0.22),
+                            Color.white.opacity(0.00)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(width: width * 0.52)
+                    .rotationEffect(.degrees(16))
+                    .offset(x: shimmerOffset * width * 2.2)
+                    .animation(.linear(duration: 1.05).repeatForever(autoreverses: false), value: shimmerOffset)
+                    .onAppear {
+                        shimmerOffset = 1.2
+                    }
+                }
+                .allowsHitTesting(false)
+            }
     }
 }
 

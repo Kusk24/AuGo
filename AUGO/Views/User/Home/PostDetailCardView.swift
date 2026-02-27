@@ -18,6 +18,7 @@ struct PostDetailCardView: View {
     @State private var userReaction: String? = nil
     @State private var lastKnownLikeCount: Int = 0
     @State private var lastKnownDislikeCount: Int = 0
+    @State private var isReactionSubmitting = false
     
     private var categoryColor: Color {
         switch post.category {
@@ -71,315 +72,229 @@ struct PostDetailCardView: View {
     }
     
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    HStack {
-                        Spacer()
-                        Text("Post")
-                            .font(.headline)
-                        Spacer()
-                        Button {
-                            dismiss()
-                        } label: {
-                            Circle()
-                                .fill(Color(UIColor.systemGray5))
-                                .frame(width: 44, height: 44)
-                                .overlay(
-                                    Image(systemName: "xmark")
-                                        .font(.title3.weight(.semibold))
-                                        .foregroundColor(.gray)
-                                )
-                        }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Text("Post")
+                        .font(.title3.weight(.bold))
+                    Spacer()
+                    Button {
+                        dismiss()
+                    } label: {
+                        Circle()
+                            .fill(Color(UIColor.systemGray5))
+                            .frame(width: 40, height: 40)
+                            .overlay(
+                                Image(systemName: "xmark")
+                                    .font(.headline.weight(.semibold))
+                                    .foregroundColor(.gray)
+                            )
                     }
-                    .padding(.horizontal)
-                    .padding(.top, 8)
-                    
-                    // Header with category badge
-                    HStack {
-                        HStack(spacing: 8) {
-                            Image(systemName: categoryIcon)
-                                .foregroundColor(categoryColor)
-                            
-                            Text(post.category.rawValue)
-                                .font(.headline)
-                                .foregroundColor(categoryColor)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(categoryColor.opacity(0.15))
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+
+                HStack(spacing: 10) {
+                    Label(post.category.rawValue, systemImage: categoryIcon)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(categoryColor)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(categoryColor.opacity(0.12))
                         .clipShape(Capsule())
-                        
-                        Spacer()
+
+                    Spacer()
+
+                    Text(post.author)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 16)
+
+                if !post.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(post.message)
+                        .font(.title3.weight(.semibold))
+                        .foregroundColor(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(Color.Brand.surface)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                                )
+                        )
+                        .padding(.horizontal, 16)
+                }
+
+                if !photoPaths.isEmpty {
+                    TabView {
+                        ForEach(photoPaths, id: \.self) { path in
+                            if let url = storageDownloadURL(for: path) {
+                                CachedRemoteImage(url: url, cacheKey: url.absoluteString) { image in
+                                    image
+                                        .resizable()
+                                        .scaledToFill()
+                                } placeholder: {
+                                    RoundedRectangle(cornerRadius: 14)
+                                        .fill(Color(UIColor.systemGray5))
+                                        .overlay(
+                                            Image(systemName: "photo")
+                                                .foregroundColor(.secondary)
+                                        )
+                                }
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .padding(.horizontal, 16)
+                            }
+                        }
                     }
-                    .padding(.horizontal)
-                    .padding(.top, 8)
-                    
-                    // Post message (main content)
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Message")
-                            .font(.caption)
+                    .frame(height: 260)
+                    .tabViewStyle(.page(indexDisplayMode: .automatic))
+                }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "clock")
                             .foregroundColor(.secondary)
-                        
-                        Text(post.message)
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                            .fixedSize(horizontal: false, vertical: true)
+                        Text(relativeTime)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
                     }
-                    .padding(.horizontal)
 
-                    if !photoPaths.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Photos")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 10) {
-                                    ForEach(photoPaths, id: \.self) { path in
-                                        if let url = storageDownloadURL(for: path) {
-                                            CachedRemoteImage(url: url, cacheKey: url.absoluteString) { image in
-                                                image
-                                                    .resizable()
-                                                    .scaledToFill()
-                                            } placeholder: {
-                                                ZStack {
-                                                    RoundedRectangle(cornerRadius: 10)
-                                                        .fill(Color(UIColor.systemGray5))
-                                                    Image(systemName: "photo")
-                                                        .foregroundColor(.secondary)
-                                                }
-                                            }
-                                            .frame(width: 220, height: 220)
-                                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        .padding(.horizontal)
+                    HStack(spacing: 10) {
+                        Image(systemName: "location")
+                            .foregroundColor(.secondary)
+                        Text(String(format: "%.5f, %.5f", post.coordinate.latitude, post.coordinate.longitude))
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
                     }
-                    
-                    Divider()
-                        .padding(.horizontal)
-                    
-                    // Post details
-                    VStack(spacing: 16) {
-                        // Author
-                        HStack {
-                            Image(systemName: "person.circle.fill")
-                                .font(.title3)
-                                .foregroundColor(categoryColor)
-                            
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Posted by")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                
-                                Text(post.author)
-                                    .font(.body)
-                                    .fontWeight(.medium)
-                            }
-                            
-                            Spacer()
-                        }
-                        
-                        // Time
-                        HStack {
-                            Image(systemName: "clock.fill")
-                                .font(.title3)
-                                .foregroundColor(categoryColor)
-                            
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Posted")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                
-                                Text(relativeTime)
-                                    .font(.body)
-                                    .fontWeight(.medium)
-                            }
-                            
-                            Spacer()
-                        }
-                        
-                        // Location coordinates
-                        HStack {
-                            Image(systemName: "location.fill")
-                                .font(.title3)
-                                .foregroundColor(categoryColor)
-                            
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Location")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                
-                                Text(String(format: "%.5f, %.5f", post.coordinate.latitude, post.coordinate.longitude))
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            
-                            Spacer()
-                        }
-                        
-                        // Engagement stats (always visible; shows live counts when available)
-                        HStack {
-                            Image(systemName: "chart.bar.fill")
-                                .font(.title3)
-                                .foregroundColor(categoryColor)
 
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Engagement")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-
-                                HStack(spacing: 16) {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "arrow.up")
-                                        Text("\(firebasePost?.likeCount ?? lastKnownLikeCount)")
-                                    }
-
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "arrow.down")
-                                        Text("\(firebasePost?.dislikeCount ?? lastKnownDislikeCount)")
-                                    }
-                                }
-                                .font(.subheadline)
-                            }
-
-                            Spacer()
-                        }
+                    HStack(spacing: 16) {
+                        Label("\(firebasePost?.likeCount ?? lastKnownLikeCount)", systemImage: "arrow.up")
+                            .foregroundColor(.secondary)
+                        Label("\(firebasePost?.dislikeCount ?? lastKnownDislikeCount)", systemImage: "arrow.down")
+                            .foregroundColor(.secondary)
                     }
-                    .padding(.horizontal)
-                    
-                    Divider()
-                        .padding(.horizontal)
-                    
-                    // Like/Dislike buttons (always visible; counts update when firebasePost updates)
-                    HStack(spacing: 12) {
-                        Button(action: {
-                            // Optimistically update local reaction and counts
-                            let previous = userReaction
-                            if previous == "like" {
-                                // Removing like
-                                userReaction = nil
-                                lastKnownLikeCount = max(0, lastKnownLikeCount - 1)
-                            } else if previous == "dislike" {
-                                // Switching from dislike to like
-                                userReaction = "like"
-                                lastKnownDislikeCount = max(0, lastKnownDislikeCount - 1)
-                                lastKnownLikeCount += 1
-                            } else {
-                                // Adding like
-                                userReaction = "like"
-                                lastKnownLikeCount += 1
-                            }
-                            onLike?()
-                        }) {
-                            HStack {
-                                Image(systemName: userReaction == "like" ? "hand.thumbsup.fill" : "hand.thumbsup")
-                                Text("Like")
-                                Text("(\(firebasePost?.likeCount ?? lastKnownLikeCount))")
-                                    .font(.caption)
-                            }
+                    .font(.subheadline)
+                }
+                .padding(14)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.Brand.surfaceMuted)
+                )
+                .padding(.horizontal, 16)
+
+                HStack(spacing: 10) {
+                    Button(action: handleLikeTap) {
+                        Label("Like (\(firebasePost?.likeCount ?? lastKnownLikeCount))", systemImage: userReaction == "like" ? "hand.thumbsup.fill" : "hand.thumbsup")
+                            .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(userReaction == "like" ? Color.green : Color.green.opacity(0.1))
+                            .padding(.vertical, 12)
+                            .background(userReaction == "like" ? Color.green : Color.green.opacity(0.12))
                             .foregroundColor(userReaction == "like" ? .white : .green)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                        }
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .disabled(isReactionSubmitting)
 
-                        Button(action: {
-                            // Optimistically update local reaction and counts
-                            let previous = userReaction
-                            if previous == "dislike" {
-                                // Removing dislike
-                                userReaction = nil
-                                lastKnownDislikeCount = max(0, lastKnownDislikeCount - 1)
-                            } else if previous == "like" {
-                                // Switching from like to dislike
-                                userReaction = "dislike"
-                                lastKnownLikeCount = max(0, lastKnownLikeCount - 1)
-                                lastKnownDislikeCount += 1
-                            } else {
-                                // Adding dislike
-                                userReaction = "dislike"
-                                lastKnownDislikeCount += 1
-                            }
-                            onDislike?()
-                        }) {
-                            HStack {
-                                Image(systemName: userReaction == "dislike" ? "hand.thumbsdown.fill" : "hand.thumbsdown")
-                                Text("Dislike")
-                                Text("(\(firebasePost?.dislikeCount ?? lastKnownDislikeCount))")
-                                    .font(.caption)
-                            }
+                    Button(action: handleDislikeTap) {
+                        Label("Dislike (\(firebasePost?.dislikeCount ?? lastKnownDislikeCount))", systemImage: userReaction == "dislike" ? "hand.thumbsdown.fill" : "hand.thumbsdown")
+                            .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(userReaction == "dislike" ? Color.orange : Color.orange.opacity(0.1))
+                            .padding(.vertical, 12)
+                            .background(userReaction == "dislike" ? Color.orange : Color.orange.opacity(0.12))
                             .foregroundColor(userReaction == "dislike" ? .white : .orange)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                        }
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
-                    .padding(.horizontal)
-                    
-                    Divider()
-                        .padding(.horizontal)
-                    
-                    // Action buttons
-                    VStack(spacing: 12) {
-                        Button(action: {
-                            openInMaps()
-                        }) {
-                            HStack {
-                                Image(systemName: "map.fill")
-                                Text("Open in Maps")
-                                Spacer()
-                                Image(systemName: "arrow.up.forward.square")
-                            }
-                            .font(.body)
+                    .disabled(isReactionSubmitting)
+                }
+                .padding(.horizontal, 16)
+
+                HStack(spacing: 10) {
+                    Button(action: openInMaps) {
+                        Label("Open in Maps", systemImage: "map")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 11)
+                            .background(Color.blue.opacity(0.12))
                             .foregroundColor(.blue)
-                            .padding()
-                            .background(Color.blue.opacity(0.1))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                        }
-                        
-                        Button(action: {
-                            onReport()
-                        }) {
-                            HStack {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                Text("Report Post")
-                                Spacer()
-                            }
-                            .font(.body)
-                            .foregroundColor(.red)
-                            .padding()
-                            .background(Color.red.opacity(0.1))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                        }
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
-                    .padding(.horizontal)
-                    .padding(.bottom, 20)
+
+                    Button(action: onReport) {
+                        Label("Report", systemImage: "exclamationmark.triangle.fill")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 11)
+                            .background(Color.red.opacity(0.12))
+                            .foregroundColor(.red)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
                 }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 18)
             }
-            .onAppear {
-                // Seed last known counts so Engagement stays visible even if firebasePost is briefly nil
-                if let fbPost = firebasePost {
-                    lastKnownLikeCount = fbPost.likeCount
-                    lastKnownDislikeCount = fbPost.dislikeCount
-                }
-                Task {
-                    await loadUserReaction()
-                }
+            .padding(.top, 4)
+        }
+        .onAppear {
+            if let fbPost = firebasePost {
+                lastKnownLikeCount = fbPost.likeCount
+                lastKnownDislikeCount = fbPost.dislikeCount
             }
-            .toolbar(.hidden, for: .navigationBar)
-            .onChange(of: firebasePost?.likeCount) { _, newValue in
-                if let newValue = newValue { lastKnownLikeCount = newValue }
-            }
-            .onChange(of: firebasePost?.dislikeCount) { _, newValue in
-                if let newValue = newValue { lastKnownDislikeCount = newValue }
-            }
+            Task { await loadUserReaction() }
+        }
+        .toolbar(.hidden, for: .navigationBar)
+        .onChange(of: firebasePost?.likeCount) { _, newValue in
+            if let newValue = newValue { lastKnownLikeCount = newValue }
+        }
+        .onChange(of: firebasePost?.dislikeCount) { _, newValue in
+            if let newValue = newValue { lastKnownDislikeCount = newValue }
+        }
+    }
+
+    private func handleLikeTap() {
+        guard !isReactionSubmitting else { return }
+        isReactionSubmitting = true
+        let previous = userReaction
+        if previous == "like" {
+            userReaction = nil
+            lastKnownLikeCount = max(0, lastKnownLikeCount - 1)
+        } else if previous == "dislike" {
+            userReaction = "like"
+            lastKnownDislikeCount = max(0, lastKnownDislikeCount - 1)
+            lastKnownLikeCount += 1
+        } else {
+            userReaction = "like"
+            lastKnownLikeCount += 1
+        }
+        onLike?()
+        Task {
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            await MainActor.run { isReactionSubmitting = false }
+        }
+    }
+
+    private func handleDislikeTap() {
+        guard !isReactionSubmitting else { return }
+        isReactionSubmitting = true
+        let previous = userReaction
+        if previous == "dislike" {
+            userReaction = nil
+            lastKnownDislikeCount = max(0, lastKnownDislikeCount - 1)
+        } else if previous == "like" {
+            userReaction = "dislike"
+            lastKnownLikeCount = max(0, lastKnownLikeCount - 1)
+            lastKnownDislikeCount += 1
+        } else {
+            userReaction = "dislike"
+            lastKnownDislikeCount += 1
+        }
+        onDislike?()
+        Task {
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            await MainActor.run { isReactionSubmitting = false }
         }
     }
     

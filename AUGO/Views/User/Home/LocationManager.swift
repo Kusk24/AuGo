@@ -5,6 +5,7 @@ import Combine
 final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var authorizationStatus: CLAuthorizationStatus
     @Published var lastLocation: CLLocation?
+    @Published var headingDegrees: CLLocationDirection?
 
     private let manager: CLLocationManager
 
@@ -14,6 +15,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         super.init()
         self.manager.delegate = self
         self.manager.desiredAccuracy = kCLLocationAccuracyBest
+        self.manager.headingFilter = 3
     }
 
     func requestWhenInUseAuthorization() {
@@ -22,10 +24,14 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
 
     func startUpdatingLocation() {
         manager.startUpdatingLocation()
+        if CLLocationManager.headingAvailable() {
+            manager.startUpdatingHeading()
+        }
     }
 
     func stopUpdatingLocation() {
         manager.stopUpdatingLocation()
+        manager.stopUpdatingHeading()
     }
 
     // MARK: CLLocationManagerDelegate
@@ -49,5 +55,13 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         // You can add logging here if needed
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
+        let heading = newHeading.trueHeading > 0 ? newHeading.trueHeading : newHeading.magneticHeading
+        guard heading >= 0 else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.headingDegrees = heading
+        }
     }
 }

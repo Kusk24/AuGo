@@ -124,15 +124,38 @@ struct ProfileView: View {
                                 textColor: Color.Brand.primary
                             )
 
-                            Circle()
-                                .fill(Color.Brand.primary)
-                                .frame(width: 28, height: 28)
-                                .overlay(
-                                    Image(systemName: "camera.fill")
-                                        .font(.system(size: 13, weight: .bold))
-                                        .foregroundColor(.white)
-                                )
-                                .offset(x: 4, y: 2)
+                            Menu {
+                                PhotosPicker(selection: $selectedProfilePhotoItem, matching: .images) {
+                                    Label("Library", systemImage: "photo.on.rectangle.angled")
+                                }
+
+                                Button {
+                                    guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+                                        activeAlert = ProfileAlertItem(kind: .message("Profile Picture", "Camera is not available on this device."))
+                                        return
+                                    }
+                                    showProfileCameraPicker = true
+                                } label: {
+                                    Label("Take Photo", systemImage: "camera.fill")
+                                }
+
+                                Button(role: .destructive) {
+                                    activeAlert = ProfileAlertItem(kind: .deleteProfilePhoto)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                                .disabled(resolvedProfileImageURL == nil || isUploadingProfilePhoto)
+                            } label: {
+                                Circle()
+                                    .fill(Color.Brand.primary)
+                                    .frame(width: 44, height: 44)
+                                    .overlay(
+                                        Image(systemName: "square.and.pencil")
+                                            .font(.system(size: 18, weight: .bold))
+                                            .foregroundColor(.white)
+                                    )
+                            }
+                            .offset(x:4, y: 2)
 
                             if isUploadingProfilePhoto {
                                 Circle()
@@ -143,50 +166,6 @@ struct ProfileView: View {
                                             .tint(.white)
                                     )
                             }
-                        }
-
-                        HStack(spacing: 10) {
-                            PhotosPicker(selection: $selectedProfilePhotoItem, matching: .images) {
-                                Label("Library", systemImage: "photo.on.rectangle.angled")
-                                    .font(.caption.weight(.semibold))
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(Color.Brand.primary.opacity(0.12))
-                                    .foregroundColor(Color.Brand.primary)
-                                    .clipShape(Capsule())
-                            }
-                            .buttonStyle(.plain)
-
-                            Button {
-                                guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
-                                    activeAlert = ProfileAlertItem(kind: .message("Profile Picture", "Camera is not available on this device."))
-                                    return
-                                }
-                                showProfileCameraPicker = true
-                            } label: {
-                                Label("Take Photo", systemImage: "camera.fill")
-                                    .font(.caption.weight(.semibold))
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(Color.Brand.primary.opacity(0.12))
-                                    .foregroundColor(Color.Brand.primary)
-                                    .clipShape(Capsule())
-                            }
-                            .buttonStyle(.plain)
-
-                            Button(role: .destructive) {
-                                activeAlert = ProfileAlertItem(kind: .deleteProfilePhoto)
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                                    .font(.caption.weight(.semibold))
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(Color.red.opacity(0.12))
-                                    .foregroundColor(.red)
-                                    .clipShape(Capsule())
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(resolvedProfileImageURL == nil || isUploadingProfilePhoto)
                         }
 
                         Text(userName)
