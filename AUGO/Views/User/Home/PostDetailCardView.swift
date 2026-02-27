@@ -70,25 +70,35 @@ struct PostDetailCardView: View {
     private var photoPaths: [String] {
         firebasePost?.photoPaths ?? []
     }
+
+    private var postTitle: String {
+        let trimmed = post.author.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = trimmed.isEmpty ? "User" : trimmed
+        let suffix = name.lowercased().hasSuffix("s") ? "'" : "'s"
+        return "\(name)\(suffix) Post"
+    }
     
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    Text("Post")
+                ZStack {
+                    Text(postTitle)
                         .font(.title3.weight(.bold))
-                    Spacer()
-                    Button {
-                        dismiss()
-                    } label: {
-                        Circle()
-                            .fill(Color(UIColor.systemGray5))
-                            .frame(width: 40, height: 40)
-                            .overlay(
-                                Image(systemName: "xmark")
-                                    .font(.headline.weight(.semibold))
-                                    .foregroundColor(.gray)
-                            )
+
+                    HStack {
+                        Spacer()
+                        Button {
+                            dismiss()
+                        } label: {
+                            Circle()
+                                .fill(Color(UIColor.systemGray5))
+                                .frame(width: 40, height: 40)
+                                .overlay(
+                                    Image(systemName: "xmark")
+                                        .font(.headline.weight(.semibold))
+                                        .foregroundColor(.gray)
+                                )
+                        }
                     }
                 }
                 .padding(.horizontal, 16)
