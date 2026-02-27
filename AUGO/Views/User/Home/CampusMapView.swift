@@ -49,6 +49,7 @@ struct CampusMapView: View {
     @State private var showSuccessAlert = false
     @State private var alertMessage = ""
     @State private var showNotificationList = false
+    @State private var showRarityLegend = false
     // MARK: - FILTER
     @State private var selectedCategories: Set<Post.PostCategory> = Set([
         .casual, .lostFound, .complaint, .event, .question, .arChallenge
@@ -316,6 +317,26 @@ struct CampusMapView: View {
         } label: {
             notificationIcon
         }
+    }
+
+    private var rarityLegendButton: some View {
+        Button {
+            showRarityLegend = true
+        } label: {
+            Image(systemName: "questionmark.circle.fill")
+                .foregroundStyle(Color.Brand.primary)
+        }
+    }
+
+    private var rarityLegendRows: [(label: String, rarity: String)] {
+        [
+            ("Ultra Rare", "Ultra Rare"),
+            ("Rare", "Rare"),
+            ("Uncommon", "Uncommon"),
+            ("Common", "Common"),
+            ("Very Common", "Very Common"),
+            ("Unlimited", "Unlimited")
+        ]
     }
     
     private var notificationIcon: some View {
@@ -742,6 +763,9 @@ struct CampusMapView: View {
             updateClustersAndMapping()
         }
         .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                rarityLegendButton
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 notificationButton
             }
@@ -858,6 +882,32 @@ struct CampusMapView: View {
         .sheet(isPresented: $showNotificationList) {
             NotificationListView()
                 .environmentObject(notificationManager)
+        }
+        .sheet(isPresented: $showRarityLegend) {
+            NavigationStack {
+                List {
+                    ForEach(rarityLegendRows, id: \.label) { row in
+                        HStack(spacing: 12) {
+                            Circle()
+                                .fill(ARRarityPalette.accentColor(for: row.rarity))
+                                .frame(width: 12, height: 12)
+                            Text(row.label)
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+                .navigationTitle("AR Rarity Colors")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") {
+                            showRarityLegend = false
+                        }
+                    }
+                }
+            }
+            .presentationDetents([.fraction(0.42)])
         }
     }
 
