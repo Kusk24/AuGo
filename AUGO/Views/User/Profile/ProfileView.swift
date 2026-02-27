@@ -23,18 +23,13 @@ struct ProfileView: View {
     @State private var spawnMetadataByID: [String: ARSpawnMetadata] = [:]
     @State private var selectedProfilePhotoItem: PhotosPickerItem?
     @State private var isUploadingProfilePhoto = false
+    @State private var resolvedProfileImageURL: URL?
     
     // Computed properties for real user data
     private var userName: String {
         authManager.userProfile?.nickname ?? "User"
     }
 
-    private var profileImageURL: URL? {
-        guard let raw = authManager.userProfile?.profileImageURL?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !raw.isEmpty else { return nil }
-        return URL(string: raw)
-    }
-    
     private var fullName: String {
         authManager.userProfile?.name ?? "N/A"
     }
@@ -122,7 +117,7 @@ struct ProfileView: View {
                         PhotosPicker(selection: $selectedProfilePhotoItem, matching: .images) {
                             ZStack(alignment: .bottomTrailing) {
                                 UserAvatarView(
-                                    imageURL: profileImageURL,
+                                    imageURL: resolvedProfileImageURL,
                                     fallbackText: userName,
                                     size: 96,
                                     fillColor: Color.Brand.primary.opacity(0.2),
@@ -432,9 +427,15 @@ struct ProfileView: View {
             authManager.fetchUserProfile(uid: userId)
             await postManager.refreshUserEconomy(userId: userId)
             await refreshCapturedSpawnMetadata()
+            await refreshDisplayedProfileImage()
         }
         .task(id: capturedCharacters.map(\.spawnId).joined(separator: "|")) {
             await refreshCapturedSpawnMetadata()
+        }
+        .task(
+            id: "\(authManager.userProfile?.profileImageURL ?? "")|\(authManager.userProfile?.profileImagePath ?? "")|\(authManager.user?.photoURL?.absoluteString ?? "")"
+        ) {
+            await refreshDisplayedProfileImage()
         }
         .onChange(of: authManager.user?.uid) { _, newUserId in
             // Re-setup listener if user changes
@@ -544,14 +545,71 @@ struct ProfileView: View {
                 uploadData = originalData
             }
 
-            _ = try await authManager.uploadProfileImage(uid: uid, imageData: uploadData)
+            let uploadedURLString = try await authManager.uploadProfileImage(uid: uid, imageData: uploadData)
             await MainActor.run {
+                resolvedProfileImageURL = URL(string: uploadedURLString)
                 activeAlert = ProfileAlertItem(kind: .message("Profile Picture", "Profile picture updated."))
             }
+            await refreshDisplayedProfileImage()
         } catch {
             await MainActor.run {
                 activeAlert = ProfileAlertItem(kind: .message("Profile Picture", "Failed to upload profile picture: \(error.localizedDescription)"))
             }
+        }
+    }
+
+    private func refreshDisplayedProfileImage() async {
+        var rawCandidates: [String] = []
+
+        if let profileURL = authManager.userProfile?.profileImageURL?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !profileURL.isEmpty {
+            rawCandidates.append(profileURL)
+        }
+        if let profilePath = authManager.userProfile?.profileImagePath?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !profilePath.isEmpty {
+            rawCandidates.append(profilePath)
+        }
+        if let authPhotoURL = authManager.user?.photoURL?.absoluteString.trimmingCharacters(in: .whitespacesAndNewlines),
+           !authPhotoURL.isEmpty {
+            rawCandidates.append(authPhotoURL)
+        }
+
+        // Fallback fetch: profile doc can be fresher than local observed model in some sessions.
+        if rawCandidates.isEmpty, let uid = authManager.user?.uid {
+            do {
+                let snapshot = try await Firestore.firestore().collection("users").document(uid).getDocument()
+                let data = snapshot.data()
+                if let profileURL = data?["profileImageURL"] as? String,
+                   !profileURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    rawCandidates.append(profileURL)
+                }
+                if let profilePath = data?["profileImagePath"] as? String,
+                   !profilePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    rawCandidates.append(profilePath)
+                }
+            } catch {
+                print("⚠️ Failed loading profile image fallback doc: \(error.localizedDescription)")
+            }
+        }
+
+        var uniqueCandidates: [String] = []
+        for candidate in rawCandidates {
+            if !uniqueCandidates.contains(candidate) {
+                uniqueCandidates.append(candidate)
+            }
+        }
+
+        for candidate in uniqueCandidates {
+            if let resolved = await StorageURLResolver.shared.resolveURL(from: candidate) {
+                await MainActor.run {
+                    resolvedProfileImageURL = resolved
+                }
+                return
+            }
+        }
+
+        await MainActor.run {
+            resolvedProfileImageURL = nil
         }
     }
 

@@ -74,6 +74,26 @@ struct PostDetailCardView: View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
+                    HStack {
+                        Spacer()
+                        Text("Post")
+                            .font(.headline)
+                        Spacer()
+                        Button {
+                            dismiss()
+                        } label: {
+                            Circle()
+                                .fill(Color(UIColor.systemGray5))
+                                .frame(width: 44, height: 44)
+                                .overlay(
+                                    Image(systemName: "xmark")
+                                        .font(.title3.weight(.semibold))
+                                        .foregroundColor(.gray)
+                                )
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 8)
                     
                     // Header with category badge
                     HStack {
@@ -364,20 +384,7 @@ struct PostDetailCardView: View {
                     await loadUserReaction()
                 }
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color.Brand.appBackground, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.gray)
-                            .font(.title3)
-                    }
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)
             .onChange(of: firebasePost?.likeCount) { _, newValue in
                 if let newValue = newValue { lastKnownLikeCount = newValue }
             }
