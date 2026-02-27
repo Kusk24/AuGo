@@ -1090,7 +1090,7 @@ private struct CapturedCharacterCard: View {
         if let next = capture.nextCatchAt, next > Date() {
             let formatter = RelativeDateTimeFormatter()
             formatter.unitsStyle = .short
-            return "Next in \(formatter.localizedString(for: next, relativeTo: Date()))"
+            return "Next \(formatter.localizedString(for: next, relativeTo: Date()))"
         }
         return "Ready again · +\(coinsText(capture.coinValue)) coins · +\(capture.pointValue) pts"
     }
@@ -1098,6 +1098,15 @@ private struct CapturedCharacterCard: View {
     private var progress: Double {
         guard capture.catchableTime > 0 else { return 1 }
         return min(1, Double(capture.catchCount) / Double(capture.catchableTime))
+    }
+
+    private var rarityText: String? {
+        let trimmed = capture.rarity?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private var rarityBadgeColor: Color {
+        ARRarityPalette.accentColor(for: rarityText)
     }
 
     var body: some View {
@@ -1142,6 +1151,16 @@ private struct CapturedCharacterCard: View {
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
                     .foregroundColor(.primary)
+
+                if let rarity = rarityText {
+                    Text(rarity)
+                        .font(.caption2.weight(.bold))
+                        .foregroundColor(rarityBadgeColor)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(Color.white.opacity(0.26))
+                        .clipShape(Capsule())
+                }
 
                 Text("\(capture.catchCount)/\(capture.catchableTime) captured")
                     .font(.caption)
