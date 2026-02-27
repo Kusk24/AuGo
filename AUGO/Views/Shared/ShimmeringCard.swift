@@ -63,7 +63,7 @@ struct HolographicCaptureCard: View {
                             .foregroundColor(rarityBadgeColor)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 5)
-                            .background(Color.black.opacity(0.26))
+                            .background(Color.white.opacity(0.26))
                             .clipShape(Capsule())
                     }
                 }
