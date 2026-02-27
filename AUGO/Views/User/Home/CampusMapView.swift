@@ -453,7 +453,7 @@ struct CampusMapView: View {
                 let markerSize = dotSize()
                 ZStack {
                     Circle()
-                        .fill(colorForCatchableTime(dot.catchableTime))
+                        .fill(colorForSpawnDot(rarity: dot.rarity, catchableTime: dot.catchableTime))
                         .frame(width: markerSize, height: markerSize)
                         .overlay(
                             Circle()
@@ -465,7 +465,7 @@ struct CampusMapView: View {
                         .font(.system(size: markerSize * 0.45, weight: .semibold))
                         .foregroundStyle(.white)
                 }
-                    .accessibilityLabel("\(dot.title), catchable time \(dot.catchableTime)")
+                    .accessibilityLabel("\(dot.title), rarity \(dot.rarity ?? "unknown"), catchable time \(dot.catchableTime)")
             }
         }
     }
@@ -576,6 +576,14 @@ struct CampusMapView: View {
         }
     }
 
+    private func colorForSpawnDot(rarity: String?, catchableTime: Int) -> Color {
+        let normalizedRarity = ARRarityPalette.normalize(rarity)
+        if !normalizedRarity.isEmpty {
+            return ARRarityPalette.accentColor(for: normalizedRarity)
+        }
+        return colorForCatchableTime(catchableTime)
+    }
+
     private func dotSize() -> CGFloat {
         // Uniform AR marker size for consistency across all characters.
         11.2
@@ -601,6 +609,7 @@ struct CampusMapView: View {
                     let data = doc.data()
                     let title = (data["title"] as? String) ?? (data["name"] as? String) ?? "AR Spawn"
                     let catchableTime = max(1, self.toInt(data["catchable_time"]) ?? 1)
+                    let rarity = data["rarity"] as? String
                     let symbol = ContentSymbolKit.arCharacterSymbol(for: title)
                     let fixedLocations = data["fixedLocations"] as? [[String: Any]] ?? []
 
@@ -628,6 +637,7 @@ struct CampusMapView: View {
                             title: point.0,
                             coordinate: CLLocationCoordinate2D(latitude: point.1, longitude: point.2),
                             catchableTime: catchableTime,
+                            rarity: rarity,
                             symbol: symbol
                         )
                     }
@@ -881,6 +891,7 @@ private struct ARSpawnMapDot: Identifiable {
     let title: String
     let coordinate: CLLocationCoordinate2D
     let catchableTime: Int
+    let rarity: String?
     let symbol: String
 }
 

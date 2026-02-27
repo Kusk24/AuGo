@@ -20,6 +20,7 @@ struct CreatePostView: View {
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var selectedPhoto: UIImage?
     @State private var isLoadingPhotos = false
+    @State private var showCameraPicker = false
     @State private var enableEmojiPin = false
     @State private var selectedEmojiPin: String?
     
@@ -237,6 +238,26 @@ struct CreatePostView: View {
                             .clipShape(Capsule())
                         }
 
+                        Button {
+                            guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+                                alertMessage = "Camera is not available on this device."
+                                showAlert = true
+                                return
+                            }
+                            showCameraPicker = true
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "camera.fill")
+                                Text(selectedPhoto == nil ? "Take photo" : "Retake photo")
+                            }
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color.Brand.primary.opacity(0.12))
+                            .foregroundColor(Color.Brand.primary)
+                            .clipShape(Capsule())
+                        }
+
                         if isLoadingPhotos {
                             ProgressView("Loading photo...")
                                 .font(.caption)
@@ -388,6 +409,13 @@ struct CreatePostView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(alertMessage)
+        }
+        .sheet(isPresented: $showCameraPicker) {
+            CameraImagePicker { image in
+                selectedPhoto = image
+                selectedPhotoItem = nil
+            }
+            .ignoresSafeArea()
         }
     }
     

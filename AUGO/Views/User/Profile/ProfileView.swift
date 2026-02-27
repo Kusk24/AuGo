@@ -23,6 +23,7 @@ struct ProfileView: View {
     @State private var spawnMetadataByID: [String: ARSpawnMetadata] = [:]
     @State private var selectedProfilePhotoItem: PhotosPickerItem?
     @State private var isUploadingProfilePhoto = false
+    @State private var showProfileCameraPicker = false
     @State private var resolvedProfileImageURL: URL?
     
     // Computed properties for real user data
@@ -114,38 +115,79 @@ struct ProfileView: View {
 
                     // MARK: Avatar + name
                     VStack(spacing: 12) {
-                        PhotosPicker(selection: $selectedProfilePhotoItem, matching: .images) {
-                            ZStack(alignment: .bottomTrailing) {
-                                UserAvatarView(
-                                    imageURL: resolvedProfileImageURL,
-                                    fallbackText: userName,
-                                    size: 96,
-                                    fillColor: Color.Brand.primary.opacity(0.2),
-                                    textColor: Color.Brand.primary
+                        ZStack(alignment: .bottomTrailing) {
+                            UserAvatarView(
+                                imageURL: resolvedProfileImageURL,
+                                fallbackText: userName,
+                                size: 96,
+                                fillColor: Color.Brand.primary.opacity(0.2),
+                                textColor: Color.Brand.primary
+                            )
+
+                            Circle()
+                                .fill(Color.Brand.primary)
+                                .frame(width: 28, height: 28)
+                                .overlay(
+                                    Image(systemName: "camera.fill")
+                                        .font(.system(size: 13, weight: .bold))
+                                        .foregroundColor(.white)
                                 )
+                                .offset(x: 4, y: 2)
 
+                            if isUploadingProfilePhoto {
                                 Circle()
-                                    .fill(Color.Brand.primary)
-                                    .frame(width: 28, height: 28)
+                                    .fill(.black.opacity(0.35))
+                                    .frame(width: 96, height: 96)
                                     .overlay(
-                                        Image(systemName: "camera.fill")
-                                            .font(.system(size: 13, weight: .bold))
-                                            .foregroundColor(.white)
+                                        ProgressView()
+                                            .tint(.white)
                                     )
-                                    .offset(x: 4, y: 2)
-
-                                if isUploadingProfilePhoto {
-                                    Circle()
-                                        .fill(.black.opacity(0.35))
-                                        .frame(width: 96, height: 96)
-                                        .overlay(
-                                            ProgressView()
-                                                .tint(.white)
-                                        )
-                                }
                             }
                         }
-                        .buttonStyle(.plain)
+
+                        HStack(spacing: 10) {
+                            PhotosPicker(selection: $selectedProfilePhotoItem, matching: .images) {
+                                Label("Library", systemImage: "photo.on.rectangle.angled")
+                                    .font(.caption.weight(.semibold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(Color.Brand.primary.opacity(0.12))
+                                    .foregroundColor(Color.Brand.primary)
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+                                    activeAlert = ProfileAlertItem(kind: .message("Profile Picture", "Camera is not available on this device."))
+                                    return
+                                }
+                                showProfileCameraPicker = true
+                            } label: {
+                                Label("Take Photo", systemImage: "camera.fill")
+                                    .font(.caption.weight(.semibold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(Color.Brand.primary.opacity(0.12))
+                                    .foregroundColor(Color.Brand.primary)
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+
+                            Button(role: .destructive) {
+                                activeAlert = ProfileAlertItem(kind: .deleteProfilePhoto)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                                    .font(.caption.weight(.semibold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(Color.red.opacity(0.12))
+                                    .foregroundColor(.red)
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(resolvedProfileImageURL == nil || isUploadingProfilePhoto)
+                        }
 
                         Text(userName)
                             .font(.title3.weight(.bold))
@@ -391,6 +433,15 @@ struct ProfileView: View {
                     },
                     secondaryButton: .cancel()
                 )
+            case .deleteProfilePhoto:
+                return Alert(
+                    title: Text("Delete Profile Picture"),
+                    message: Text("Remove your current profile picture?"),
+                    primaryButton: .destructive(Text("Delete")) {
+                        Task { await deleteProfilePhoto() }
+                    },
+                    secondaryButton: .cancel()
+                )
             case .coins(let message):
                 return Alert(
                     title: Text("Coins"),
@@ -433,7 +484,7 @@ struct ProfileView: View {
             await refreshCapturedSpawnMetadata()
         }
         .task(
-            id: "\(authManager.userProfile?.profileImageURL ?? "")|\(authManager.userProfile?.profileImagePath ?? "")|\(authManager.user?.photoURL?.absoluteString ?? "")"
+            id: "\(authManager.userProfile?.profileImageURL ?? "")|\(authManager.userProfile?.profileImagePath ?? "")"
         ) {
             await refreshDisplayedProfileImage()
         }
@@ -450,6 +501,12 @@ struct ProfileView: View {
         .onChange(of: selectedProfilePhotoItem) { _, newItem in
             guard let newItem else { return }
             Task { await uploadProfilePhoto(from: newItem) }
+        }
+        .sheet(isPresented: $showProfileCameraPicker) {
+            CameraImagePicker { image in
+                Task { await uploadProfilePhoto(image: image) }
+            }
+            .ignoresSafeArea()
         }
         .navigationTitle("Profile")
         .navigationBarTitleDisplayMode(.inline)
@@ -522,6 +579,30 @@ struct ProfileView: View {
     }
 
     private func uploadProfilePhoto(from item: PhotosPickerItem) async {
+        do {
+            guard let originalData = try await item.loadTransferable(type: Data.self) else {
+                await MainActor.run {
+                    activeAlert = ProfileAlertItem(kind: .message("Profile Picture", "Failed to read selected image."))
+                }
+                return
+            }
+
+            if let image = UIImage(data: originalData) {
+                await uploadProfilePhoto(image: image)
+            } else {
+                await MainActor.run {
+                    activeAlert = ProfileAlertItem(kind: .message("Profile Picture", "Failed to process selected image."))
+                }
+            }
+        } catch {
+            await MainActor.run {
+                activeAlert = ProfileAlertItem(kind: .message("Profile Picture", "Failed to upload profile picture: \(error.localizedDescription)"))
+            }
+        }
+        await MainActor.run { selectedProfilePhotoItem = nil }
+    }
+
+    private func uploadProfilePhoto(image: UIImage) async {
         guard let uid = authManager.user?.uid else { return }
         await MainActor.run { isUploadingProfilePhoto = true }
         defer {
@@ -531,22 +612,14 @@ struct ProfileView: View {
             }
         }
 
+        guard let uploadData = image.jpegData(compressionQuality: 0.82) else {
+            await MainActor.run {
+                activeAlert = ProfileAlertItem(kind: .message("Profile Picture", "Failed to process selected image."))
+            }
+            return
+        }
+
         do {
-            guard let originalData = try await item.loadTransferable(type: Data.self) else {
-                await MainActor.run {
-                    activeAlert = ProfileAlertItem(kind: .message("Profile Picture", "Failed to read selected image."))
-                }
-                return
-            }
-
-            let uploadData: Data
-            if let image = UIImage(data: originalData),
-               let jpeg = image.jpegData(compressionQuality: 0.82) {
-                uploadData = jpeg
-            } else {
-                uploadData = originalData
-            }
-
             let uploadedURLString = try await authManager.uploadProfileImage(uid: uid, imageData: uploadData)
             await MainActor.run {
                 resolvedProfileImageURL = URL(string: uploadedURLString)
@@ -556,6 +629,29 @@ struct ProfileView: View {
         } catch {
             await MainActor.run {
                 activeAlert = ProfileAlertItem(kind: .message("Profile Picture", "Failed to upload profile picture: \(error.localizedDescription)"))
+            }
+        }
+    }
+
+    private func deleteProfilePhoto() async {
+        guard let uid = authManager.user?.uid else { return }
+        await MainActor.run { isUploadingProfilePhoto = true }
+        defer {
+            Task { @MainActor in
+                isUploadingProfilePhoto = false
+            }
+        }
+
+        do {
+            try await authManager.removeProfileImage(uid: uid)
+            await MainActor.run {
+                resolvedProfileImageURL = nil
+                selectedProfilePhotoItem = nil
+                activeAlert = ProfileAlertItem(kind: .message("Profile Picture", "Profile picture deleted."))
+            }
+        } catch {
+            await MainActor.run {
+                activeAlert = ProfileAlertItem(kind: .message("Profile Picture", "Failed to delete profile picture: \(error.localizedDescription)"))
             }
         }
     }
@@ -571,11 +667,6 @@ struct ProfileView: View {
            !profilePath.isEmpty {
             rawCandidates.append(profilePath)
         }
-        if let authPhotoURL = authManager.user?.photoURL?.absoluteString.trimmingCharacters(in: .whitespacesAndNewlines),
-           !authPhotoURL.isEmpty {
-            rawCandidates.append(authPhotoURL)
-        }
-
         // Fallback fetch: profile doc can be fresher than local observed model in some sessions.
         if rawCandidates.isEmpty, let uid = authManager.user?.uid {
             do {
@@ -626,6 +717,7 @@ private struct ProfileAlertItem: Identifiable {
     enum Kind {
         case logout
         case delete(Post)
+        case deleteProfilePhoto
         case coins(String)
         case message(String, String)
     }

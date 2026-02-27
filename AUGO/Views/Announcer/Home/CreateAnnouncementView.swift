@@ -25,6 +25,7 @@ struct CreateAnnouncementView: View {
     @State private var selectedPhotos: [UIImage] = []
     @State private var existingPhotoPaths: [String] = []
     @State private var isLoadingPhotos = false
+    @State private var showCameraPicker = false
     @State private var showFilterAlert = false
     @State private var filterAlertMessage = ""
 
@@ -65,7 +66,7 @@ struct CreateAnnouncementView: View {
     }
 
     private var remainingPhotoSlots: Int {
-        max(0, 2 - existingPhotoPaths.count)
+        max(0, 2 - existingPhotoPaths.count - selectedPhotos.count)
     }
     
     var body: some View {
@@ -93,13 +94,27 @@ struct CreateAnnouncementView: View {
 
                 Section("Photos") {
                     if remainingPhotoSlots > 0 {
-                        PhotosPicker(
-                            selection: $selectedPhotoItems,
-                            maxSelectionCount: remainingPhotoSlots,
-                            matching: .images
-                        ) {
-                            Label("Add up to \(remainingPhotoSlots) photo\(remainingPhotoSlots == 1 ? "" : "s")", systemImage: "photo.on.rectangle.angled")
-                                .font(.subheadline.weight(.semibold))
+                        HStack(spacing: 12) {
+                            PhotosPicker(
+                                selection: $selectedPhotoItems,
+                                maxSelectionCount: remainingPhotoSlots,
+                                matching: .images
+                            ) {
+                                Label("Library", systemImage: "photo.on.rectangle.angled")
+                                    .font(.subheadline.weight(.semibold))
+                            }
+
+                            Button {
+                                guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+                                    filterAlertMessage = "Camera is not available on this device."
+                                    showFilterAlert = true
+                                    return
+                                }
+                                showCameraPicker = true
+                            } label: {
+                                Label("Take Photo", systemImage: "camera.fill")
+                                    .font(.subheadline.weight(.semibold))
+                            }
                         }
                     } else {
                         Label("Max 2 photos reached", systemImage: "photo.on.rectangle.angled")
@@ -227,10 +242,19 @@ struct CreateAnnouncementView: View {
         } message: {
             Text(filterAlertMessage)
         }
+        .sheet(isPresented: $showCameraPicker) {
+            CameraImagePicker { image in
+                let availableSlots = max(0, 2 - existingPhotoPaths.count - selectedPhotos.count)
+                guard availableSlots > 0 else { return }
+                selectedPhotos.append(image)
+            }
+            .ignoresSafeArea()
+        }
     }
 
     @MainActor
     private func loadSelectedPhotos(from items: [PhotosPickerItem]) async {
+        guard !items.isEmpty else { return }
         isLoadingPhotos = true
         defer { isLoadingPhotos = false }
 
@@ -241,7 +265,11 @@ struct CreateAnnouncementView: View {
                 loaded.append(image)
             }
         }
-        selectedPhotos = Array(loaded.prefix(remainingPhotoSlots))
+        let availableSlots = max(0, 2 - existingPhotoPaths.count - selectedPhotos.count)
+        if availableSlots > 0 {
+            selectedPhotos.append(contentsOf: loaded.prefix(availableSlots))
+        }
+        selectedPhotoItems = []
     }
 
     private func storageDownloadURL(for assetPath: String) -> URL? {

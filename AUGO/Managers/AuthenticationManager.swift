@@ -819,6 +819,35 @@ class AuthenticationManager: ObservableObject {
 
         return downloadURL.absoluteString
     }
+
+    func removeProfileImage(uid: String) async throws {
+        guard !uid.isEmpty else {
+            throw NSError(domain: "AuthenticationManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing user ID"])
+        }
+
+        let oldPath = userProfile?.profileImagePath?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        try await db.collection("users").document(uid).setData([
+            "profileImageURL": FieldValue.delete(),
+            "profileImagePath": FieldValue.delete(),
+            "updatedAt": Timestamp(date: Date())
+        ], merge: true)
+
+        if let oldPath, !oldPath.isEmpty {
+            do {
+                try await Storage.storage().reference(withPath: oldPath).delete()
+            } catch {
+                // Keep Firestore state authoritative even if storage cleanup fails.
+                print("⚠️ Failed to delete profile image from storage: \(error.localizedDescription)")
+            }
+        }
+
+        if var profile = userProfile {
+            profile.profileImageURL = nil
+            profile.profileImagePath = nil
+            userProfile = profile
+        }
+    }
     
     // MARK: - Sign Out
     func signOut() {

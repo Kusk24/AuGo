@@ -20,11 +20,11 @@
 	<false/>
 	<key>MICROSOFT_TENANT_ID</key>
 	<string>c1f3dc23-b7f8-48d3-9b5d-2b12f158f01f</string>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>AUGO needs notification permission to alert you about new posts, reactions, and campus updates.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
 	</array>
-	<key>NSUserNotificationsUsageDescription</key>
-	<string>AUGO needs notification permission to alert you about new posts, reactions, and campus updates.</string>
 </dict>
 </plist>
