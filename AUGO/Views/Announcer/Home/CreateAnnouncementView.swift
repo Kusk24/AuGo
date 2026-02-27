@@ -118,27 +118,16 @@ struct CreateAnnouncementView: View {
                                 ForEach(Array(existingPhotoPaths.enumerated()), id: \.offset) { index, path in
                                     if let url = storageDownloadURL(for: path) {
                                         ZStack(alignment: .topTrailing) {
-                                            AsyncImage(url: url) { phase in
-                                                switch phase {
-                                                case .empty:
-                                                    ZStack {
-                                                        RoundedRectangle(cornerRadius: 10)
-                                                            .fill(Color.Brand.surfaceMuted)
-                                                        ProgressView()
-                                                    }
-                                                case .success(let image):
-                                                    image
-                                                        .resizable()
-                                                        .scaledToFill()
-                                                case .failure:
-                                                    ZStack {
-                                                        RoundedRectangle(cornerRadius: 10)
-                                                            .fill(Color.Brand.surfaceMuted)
-                                                        Image(systemName: "photo")
-                                                            .foregroundColor(.secondary)
-                                                    }
-                                                @unknown default:
-                                                    EmptyView()
+                                            CachedRemoteImage(url: url, cacheKey: url.absoluteString) { image in
+                                                image
+                                                    .resizable()
+                                                    .scaledToFill()
+                                            } placeholder: {
+                                                ZStack {
+                                                    RoundedRectangle(cornerRadius: 10)
+                                                        .fill(Color.Brand.surfaceMuted)
+                                                    Image(systemName: "photo")
+                                                        .foregroundColor(.secondary)
                                                 }
                                             }
                                             .frame(width: 96, height: 96)

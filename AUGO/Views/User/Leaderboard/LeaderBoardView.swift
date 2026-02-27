@@ -259,19 +259,12 @@ private struct TopLeaderCardView: View {
                         .frame(width: highlight ? 70 : 60, height: highlight ? 70 : 60)
 
                     if let avatarURL = leader.avatarURL {
-                        AsyncImage(url: avatarURL) { phase in
-                            switch phase {
-                            case .empty:
-                                ProgressView()
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                            case .failure:
-                                fallbackAvatar
-                            @unknown default:
-                                fallbackAvatar
-                            }
+                        CachedRemoteImage(url: avatarURL, cacheKey: avatarURL.absoluteString) { image in
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        } placeholder: {
+                            fallbackAvatar
                         }
                         .frame(width: highlight ? 70 : 60, height: highlight ? 70 : 60)
                         .clipShape(Circle())
@@ -319,19 +312,12 @@ private struct LeaderRowView: View {
                     .frame(width: 46, height: 46)
 
                 if let avatarURL = leader.avatarURL {
-                    AsyncImage(url: avatarURL) { phase in
-                        switch phase {
-                        case .empty:
-                            ProgressView()
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-                        case .failure:
-                            fallbackAvatar
-                        @unknown default:
-                            fallbackAvatar
-                        }
+                    CachedRemoteImage(url: avatarURL, cacheKey: avatarURL.absoluteString) { image in
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    } placeholder: {
+                        fallbackAvatar
                     }
                     .frame(width: 46, height: 46)
                     .clipShape(Circle())

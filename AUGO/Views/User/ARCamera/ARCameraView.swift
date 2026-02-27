@@ -120,29 +120,39 @@ struct ARCameraView: View {
                         viewModel.dismissCaptureCelebration()
                     }
 
-                VStack(spacing: 12) {
-                    HolographicCaptureCard(
-                        title: celebration.title,
-                        subtitle: celebration.subtitle,
-                        descriptionText: celebration.descriptionText,
-                        rarity: celebration.rarity,
-                        imageURL: celebration.imageURL,
-                        coinText: celebration.coinText,
-                        pointsText: celebration.pointsText,
-                        cardHeight: 360
-                    )
-                    .frame(maxWidth: 340)
+                GeometryReader { proxy in
+                    let cardMaxWidth = min(360, proxy.size.width - 36)
+                    let maxCardRegionHeight = min(proxy.size.height * 0.72, 640)
 
-                    Button("Close") {
-                        viewModel.dismissCaptureCelebration()
+                    VStack(spacing: 12) {
+                        ScrollView(showsIndicators: false) {
+                            HolographicCaptureCard(
+                                title: celebration.title,
+                                subtitle: celebration.subtitle,
+                                descriptionText: celebration.descriptionText,
+                                rarity: celebration.rarity,
+                                imageURL: celebration.imageURL,
+                                coinText: celebration.coinText,
+                                pointsText: celebration.pointsText
+                            )
+                            .frame(maxWidth: cardMaxWidth)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 2)
+                        }
+                        .frame(maxHeight: maxCardRegionHeight)
+
+                        Button("Close") {
+                            viewModel.dismissCaptureCelebration()
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 9)
+                        .background(.ultraThinMaterial)
+                        .clipShape(Capsule())
                     }
-                    .font(.subheadline.weight(.semibold))
                     .padding(.horizontal, 18)
-                    .padding(.vertical, 9)
-                    .background(.ultraThinMaterial)
-                    .clipShape(Capsule())
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 }
-                .padding(.horizontal, 20)
                 .transition(.scale.combined(with: .opacity))
             }
         }
@@ -2006,27 +2016,16 @@ private struct ARNearbyPostCard: View {
             }
 
             if let url = post.firstPhotoURL {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .empty:
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(Color.white.opacity(0.2))
-                            ProgressView()
-                        }
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    case .failure:
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(Color.white.opacity(0.2))
-                            Image(systemName: "photo")
-                                .foregroundColor(.white.opacity(0.8))
-                        }
-                    @unknown default:
-                        EmptyView()
+                CachedRemoteImage(url: url, cacheKey: url.absoluteString) { image in
+                    image
+                        .resizable()
+                        .scaledToFill()
+                } placeholder: {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.white.opacity(0.2))
+                        Image(systemName: "photo")
+                            .foregroundColor(.white.opacity(0.8))
                     }
                 }
                 .frame(width: 190, height: 98)
@@ -2095,27 +2094,16 @@ private struct ARNearbyAnnouncementCard: View {
                 .lineLimit(1)
 
             if let url = announcement.firstPhotoURL {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .empty:
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(Color.white.opacity(0.2))
-                            ProgressView()
-                        }
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    case .failure:
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(Color.white.opacity(0.2))
-                            Image(systemName: "photo")
-                                .foregroundColor(.white.opacity(0.8))
-                        }
-                    @unknown default:
-                        EmptyView()
+                CachedRemoteImage(url: url, cacheKey: url.absoluteString) { image in
+                    image
+                        .resizable()
+                        .scaledToFill()
+                } placeholder: {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.white.opacity(0.2))
+                        Image(systemName: "photo")
+                            .foregroundColor(.white.opacity(0.8))
                     }
                 }
                 .frame(width: 224, height: 90)

@@ -89,22 +89,12 @@ struct SingleAnnouncementView: View {
                                 HStack(spacing: 10) {
                                     ForEach(displayAnnouncement.photoPaths, id: \.self) { path in
                                         if let url = storageDownloadURL(for: path) {
-                                            AsyncImage(url: url) { phase in
-                                                switch phase {
-                                                case .empty:
-                                                    ZStack {
-                                                        RoundedRectangle(cornerRadius: 10).fill(Color(UIColor.systemGray5))
-                                                        ProgressView()
-                                                    }
-                                                case .success(let image):
-                                                    image.resizable().scaledToFill()
-                                                case .failure:
-                                                    ZStack {
-                                                        RoundedRectangle(cornerRadius: 10).fill(Color(UIColor.systemGray5))
-                                                        Image(systemName: "photo").foregroundColor(.secondary)
-                                                    }
-                                                @unknown default:
-                                                    EmptyView()
+                                            CachedRemoteImage(url: url, cacheKey: url.absoluteString) { image in
+                                                image.resizable().scaledToFill()
+                                            } placeholder: {
+                                                ZStack {
+                                                    RoundedRectangle(cornerRadius: 10).fill(Color(UIColor.systemGray5))
+                                                    Image(systemName: "photo").foregroundColor(.secondary)
                                                 }
                                             }
                                             .frame(width: 220, height: 220)

@@ -691,19 +691,12 @@ private struct UserAvatarView: View {
                 .frame(width: size, height: size)
 
             if let imageURL {
-                AsyncImage(url: imageURL) { phase in
-                    switch phase {
-                    case .empty:
-                        ProgressView()
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    case .failure:
-                        fallbackContent
-                    @unknown default:
-                        fallbackContent
-                    }
+                CachedRemoteImage(url: imageURL, cacheKey: imageURL.absoluteString) { image in
+                    image
+                        .resizable()
+                        .scaledToFill()
+                } placeholder: {
+                    fallbackContent
                 }
                 .frame(width: size, height: size)
                 .clipShape(Circle())
@@ -860,29 +853,18 @@ private struct TodayPostCard: View {
             }
 
             if let resolvedPhotoURL {
-                AsyncImage(url: resolvedPhotoURL) { phase in
-                    switch phase {
-                    case .empty:
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(Color.Brand.surfaceMuted)
-                            ProgressView()
-                        }
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    case .failure:
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(Color.Brand.surfaceMuted)
-                            Image(systemName: "photo")
-                                .foregroundColor(.secondary)
-                        }
-                        .onAppear { schedulePhotoRetry() }
-                    @unknown default:
-                        EmptyView()
+                CachedRemoteImage(url: resolvedPhotoURL, cacheKey: resolvedPhotoURL.absoluteString) { image in
+                    image
+                        .resizable()
+                        .scaledToFill()
+                } placeholder: {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.Brand.surfaceMuted)
+                        Image(systemName: "photo")
+                            .foregroundColor(.secondary)
                     }
+                    .onAppear { schedulePhotoRetry() }
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 170)
@@ -1061,21 +1043,14 @@ private struct CapturedCharacterCard: View {
                         )
 
                     if let previewURL {
-                        AsyncImage(url: previewURL) { phase in
-                            switch phase {
-                            case .empty:
-                                ProgressView()
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .scaledToFit()
-                                    .padding(10)
-                            case .failure:
-                                placeholderView
-                                    .onAppear { schedulePreviewRetry() }
-                            @unknown default:
-                                placeholderView
-                            }
+                        CachedRemoteImage(url: previewURL, cacheKey: previewURL.absoluteString) { image in
+                            image
+                                .resizable()
+                                .scaledToFit()
+                                .padding(10)
+                        } placeholder: {
+                            placeholderView
+                                .onAppear { schedulePreviewRetry() }
                         }
                     } else if isLoadingPreview {
                         ProgressView()

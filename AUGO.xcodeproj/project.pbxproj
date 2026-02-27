@@ -55,6 +55,7 @@
 		C576E4952F4262800057A27C /* ContentSymbolKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = C576E4942F4262800057A27C /* ContentSymbolKit.swift */; };
 		C5905DA32F465DE1002F699C /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = C5905DA22F465DE1002F699C /* FirebaseStorage */; };
 		C5A0B0AE2F50945C00DDE1DB /* ShimmeringCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5A0B0AC2F50945C00DDE1DB /* ShimmeringCard.swift */; };
+		C5A0B0B02F511BBA00DDE1DB /* CachedRemoteImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5A0B0AF2F511BBA00DDE1DB /* CachedRemoteImage.swift */; };
 		C5A27FB52F4411F50027CF0A /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = C5A27FB42F4411F50027CF0A /* GoogleSignIn */; };
 		C5A27FB72F4411F60027CF0A /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = C5A27FB62F4411F60027CF0A /* GoogleSignInSwift */; };
 		C5A27FBA2F4412A00027CF0A /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = C5A27FB92F4412A00027CF0A /* FirebaseAuth */; };
@@ -118,6 +119,7 @@
 		C576E4922F424C630057A27C /* NotificationListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationListView.swift; sourceTree = "<group>"; };
 		C576E4942F4262800057A27C /* ContentSymbolKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentSymbolKit.swift; sourceTree = "<group>"; };
 		C5A0B0AC2F50945C00DDE1DB /* ShimmeringCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShimmeringCard.swift; sourceTree = "<group>"; };
+		C5A0B0AF2F511BBA00DDE1DB /* CachedRemoteImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CachedRemoteImage.swift; sourceTree = "<group>"; };
 		C5FAEAD12EE5988200ED4C27 /* Announcer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Announcer.swift; sourceTree = "<group>"; };
 		C5FAEAD32EE5988D00ED4C27 /* Post.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Post.swift; sourceTree = "<group>"; };
 		C5FAEAD52EE5989400ED4C27 /* Report.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Report.swift; sourceTree = "<group>"; };
@@ -356,6 +358,7 @@
 		C5A0B0AD2F50945C00DDE1DB /* Shared */ = {
 			isa = PBXGroup;
 			children = (
+				C5A0B0AF2F511BBA00DDE1DB /* CachedRemoteImage.swift */,
 				C5A0B0AC2F50945C00DDE1DB /* ShimmeringCard.swift */,
 			);
 			path = Shared;
@@ -453,6 +456,7 @@
 				C5104C712F188799000656AB /* ContentFilter.swift in Sources */,
 				C5FAEAD82EE5989B00ED4C27 /* User.swift in Sources */,
 				C5FAEAD62EE5989400ED4C27 /* Report.swift in Sources */,
+				C5A0B0B02F511BBA00DDE1DB /* CachedRemoteImage.swift in Sources */,
 				0ADE15672EDF646400F8D6A6 /* AnnouncementCenter.swift in Sources */,
 				0A48E4A42ECD1B90001A4908 /* AppRouter.swift in Sources */,
 				0AB004772EF2E180007DD336 /* PostCluster.swift in Sources */,

@@ -88,22 +88,15 @@ struct HolographicCaptureCard: View {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .fill(Color.white.opacity(0.14))
                     if let imageURL {
-                        AsyncImage(url: imageURL) { phase in
-                            switch phase {
-                            case .empty:
-                                ProgressView()
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .scaledToFit()
-                                    .padding(10)
-                            case .failure:
-                                Image(systemName: "sparkles.rectangle.stack.fill")
-                                    .font(.system(size: 36, weight: .bold))
-                                    .foregroundColor(.white.opacity(0.8))
-                            @unknown default:
-                                EmptyView()
-                            }
+                        CachedRemoteImage(url: imageURL, cacheKey: imageURL.absoluteString) { image in
+                            image
+                                .resizable()
+                                .scaledToFit()
+                                .padding(10)
+                        } placeholder: {
+                            Image(systemName: "sparkles.rectangle.stack.fill")
+                                .font(.system(size: 36, weight: .bold))
+                                .foregroundColor(.white.opacity(0.8))
                         }
                     } else {
                         Image(systemName: "sparkles.rectangle.stack.fill")
