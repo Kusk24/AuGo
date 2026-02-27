@@ -120,6 +120,8 @@ struct LeaderboardView: View {
         .refreshable {
             fetchLeaderboard()
         }
+        .navigationTitle("Leaderboard")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
     }
     

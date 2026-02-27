@@ -9,7 +9,8 @@ struct HomeView: View {
         // For now, Home = CampusMap
         // Later we can add feed, filters, etc. around it
         CampusMapView(showAnnouncement: $showAnnouncement)
-//            .navigationTitle("Campus Map")
-//            .navigationBarTitleDisplayMode(.large)
+            .navigationTitle("Campus Map")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.visible, for: .navigationBar)
     }
 }

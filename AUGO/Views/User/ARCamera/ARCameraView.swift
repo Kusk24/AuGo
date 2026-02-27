@@ -123,8 +123,12 @@ struct ARCameraView: View {
                 GeometryReader { proxy in
                     let cardMaxWidth = min(360, proxy.size.width - 36)
                     let maxCardRegionHeight = min(proxy.size.height * 0.72, 640)
+                    let topReserved = max(120, proxy.safeAreaInsets.top + 90)
+                    let bottomReserved = max(110, proxy.safeAreaInsets.bottom + 78)
 
                     VStack(spacing: 12) {
+                        Spacer(minLength: topReserved)
+
                         ScrollView(showsIndicators: false) {
                             HolographicCaptureCard(
                                 title: celebration.title,
@@ -149,9 +153,11 @@ struct ARCameraView: View {
                         .padding(.vertical, 9)
                         .background(.ultraThinMaterial)
                         .clipShape(Capsule())
+
+                        Spacer(minLength: bottomReserved)
                     }
                     .padding(.horizontal, 18)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .transition(.scale.combined(with: .opacity))
             }

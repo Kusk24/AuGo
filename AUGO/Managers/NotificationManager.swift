@@ -16,6 +16,7 @@ class NotificationManager: NSObject, ObservableObject {
     private let db = Firestore.firestore()
     private var userNotificationsListener: ListenerRegistration?
     private var listeningUserID: String?
+    private var hasPresentedInitialUnreadSummary = false
     private static let notificationsEnabledKey = "notifications_enabled"
 
     var unreadCount: Int {
@@ -34,8 +35,18 @@ class NotificationManager: NSObject, ObservableObject {
     func setupNotifications() {
         // Set notification center delegate
         UNUserNotificationCenter.current().delegate = self
+        Task {
+            await refreshNotificationPermissionStatus()
+        }
         
         print("🔔 NotificationManager initialized")
+    }
+
+    func refreshNotificationPermissionStatus() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        let granted = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional
+        self.notificationPermissionGranted = granted
+        print("🔔 Notification permission status: \(settings.authorizationStatus.rawValue) (granted=\(granted))")
     }
     
     // MARK: - Request Permission
@@ -77,38 +88,48 @@ class NotificationManager: NSObject, ObservableObject {
 
     func startListeningForUserNotifications(userId: String) {
         listeningUserID = userId
+        hasPresentedInitialUnreadSummary = false
         guard notificationsEnabled else {
             userNotificationsListener?.remove()
             userNotificationsListener = nil
             return
+        }
+        Task {
+            await registerDeviceForNotifications(userId: userId)
         }
         attachUserNotificationsListener(userId: userId, useOrderedQuery: true)
     }
     
     // MARK: - Send Local Notification
     func sendLocalNotification(title: String, body: String, identifier: String = UUID().uuidString) {
-        guard notificationsEnabled, notificationPermissionGranted else {
-            print("🔕 Local notification skipped: notifications disabled or permission not granted")
+        guard notificationsEnabled else {
+            print("🔕 Local notification skipped: notifications disabled")
             return
         }
-        
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body
-        content.sound = .default
-        
-        // Trigger immediately
-        let request = UNNotificationRequest(
-            identifier: identifier,
-            content: content,
-            trigger: nil
-        )
-        
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error {
-                print("❌ Failed to send local notification: \(error.localizedDescription)")
-            } else {
+
+        Task { @MainActor in
+            await refreshNotificationPermissionStatus()
+            guard notificationPermissionGranted else {
+                print("🔕 Local notification skipped: permission not granted")
+                return
+            }
+
+            let content = UNMutableNotificationContent()
+            content.title = title
+            content.body = body
+            content.sound = .default
+
+            let request = UNNotificationRequest(
+                identifier: identifier,
+                content: content,
+                trigger: nil
+            )
+
+            do {
+                try await UNUserNotificationCenter.current().add(request)
                 print("✅ Local notification sent: \(title)")
+            } catch {
+                print("❌ Failed to send local notification: \(error.localizedDescription)")
             }
         }
     }
@@ -179,6 +200,18 @@ class NotificationManager: NSObject, ObservableObject {
                             self.sendLocalNotification(title: title, body: body, identifier: doc.documentID)
                         }
                     }
+
+                    if isFirstLoad && !self.hasPresentedInitialUnreadSummary {
+                        let unreadCount = self.receivedNotifications.filter { !$0.isRead }.count
+                        if unreadCount > 0 {
+                            self.sendLocalNotification(
+                                title: "Notifications",
+                                body: "You have \(unreadCount) unread notification\(unreadCount == 1 ? "" : "s").",
+                                identifier: "initial_unread_summary_\(userId)"
+                            )
+                        }
+                        self.hasPresentedInitialUnreadSummary = true
+                    }
                     
                     if !useOrderedQuery {
                         self.receivedNotifications.sort { $0.receivedAt > $1.receivedAt }
@@ -196,6 +229,7 @@ class NotificationManager: NSObject, ObservableObject {
         userNotificationsListener?.remove()
         userNotificationsListener = nil
         listeningUserID = nil
+        hasPresentedInitialUnreadSummary = false
         receivedNotifications = []
     }
 

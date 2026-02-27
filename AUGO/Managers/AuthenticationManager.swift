@@ -59,6 +59,9 @@ class AuthenticationManager: ObservableObject {
             self.user = currentUser
             self.isAuthenticated = true
             notificationManager.startListeningForUserNotifications(userId: currentUser.uid)
+            Task {
+                await notificationManager.registerDeviceForNotifications(userId: currentUser.uid)
+            }
             // Determine role and fetch profile
             detectRoleAndFetchProfile(uid: currentUser.uid)
         } else {

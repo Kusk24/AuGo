@@ -16,10 +16,8 @@ struct RootTabView: View {
                 // HOME (Campus Map)
                 NavigationStack {
                     HomeView(showAnnouncement: $showAnnouncement)
-                        .navigationTitle("Campus Map")
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar(.visible, for: .navigationBar)
                 }
+                .toolbar(.visible, for: .navigationBar)
                 .tabItem {
                     Image(systemName: "house.fill")
                     Text("Home")
@@ -38,10 +36,8 @@ struct RootTabView: View {
                 // LEADERBOARD
                 NavigationStack {
                     LeaderboardView()
-                        .navigationTitle("Leaderboard")
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar(.visible, for: .navigationBar)
                 }
+                .toolbar(.visible, for: .navigationBar)
                 .tabItem {
                     Image(systemName: "chart.bar.fill")
                     Text("Leaderboard")
@@ -50,10 +46,8 @@ struct RootTabView: View {
                 // PROFILE
                 NavigationStack {
                     ProfileView()
-                        .navigationTitle("Profile")
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar(.visible, for: .navigationBar)
                 }
+                .toolbar(.visible, for: .navigationBar)
                 .tabItem {
                     Image(systemName: "person.fill")
                     Text("Profile")

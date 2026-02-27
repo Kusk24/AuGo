@@ -451,6 +451,8 @@ struct ProfileView: View {
             guard let newItem else { return }
             Task { await uploadProfilePhoto(from: newItem) }
         }
+        .navigationTitle("Profile")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
     }
     

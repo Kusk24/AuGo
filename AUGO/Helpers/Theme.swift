@@ -87,10 +87,12 @@ struct Theme {
 
         // Title colors
         appearance.largeTitleTextAttributes = [
-            .foregroundColor: UIColor.label
+            .foregroundColor: UIColor(Color.Brand.primary),
+            .font: UIFont.systemFont(ofSize: 36, weight: .bold)
         ]
         appearance.titleTextAttributes = [
-            .foregroundColor: UIColor.label
+            .foregroundColor: UIColor(Color.Brand.primary),
+            .font: UIFont.systemFont(ofSize: 22, weight: .semibold)
         ]
 
         UINavigationBar.appearance().standardAppearance = appearance
