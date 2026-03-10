@@ -69,6 +69,10 @@ private final class Loader: ObservableObject {
     private var lastCacheKey: String?
     private var currentTask: Task<Void, Never>?
 
+    deinit {
+        currentTask?.cancel()
+    }
+
     func load(url: URL?, cacheKey: String) async {
         if lastCacheKey == cacheKey, image != nil {
             return
@@ -108,7 +112,8 @@ actor RemoteImagePipeline {
         imageCache.totalCostLimit = 160 * 1024 * 1024
 
         let config = URLSessionConfiguration.default
-        config.requestCachePolicy = .returnCacheDataElseLoad
+        // Respect server cache headers/ETag to avoid serving stale images for too long.
+        config.requestCachePolicy = .useProtocolCachePolicy
         config.urlCache = URLCache(
             memoryCapacity: 64 * 1024 * 1024,
             diskCapacity: 512 * 1024 * 1024,
@@ -130,7 +135,7 @@ actor RemoteImagePipeline {
 
         let task = Task<UIImage?, Never> { [session] in
             var request = URLRequest(url: url)
-            request.cachePolicy = .returnCacheDataElseLoad
+            request.cachePolicy = .useProtocolCachePolicy
             request.timeoutInterval = 30
 
             do {

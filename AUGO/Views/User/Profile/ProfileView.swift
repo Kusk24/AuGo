@@ -1497,13 +1497,15 @@ private actor StorageURLResolver {
     static let shared = StorageURLResolver()
 
     private var resolvedCache: [String: URL] = [:]
+    private var cacheOrder: [String] = []
+    private let maxCacheEntries = 600
 
     func invalidateCache(for rawValue: String) {
         let raw = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else { return }
-        resolvedCache.removeValue(forKey: raw)
+        removeCachedURL(for: raw)
         for key in objectPathCandidates(from: raw) {
-            resolvedCache.removeValue(forKey: key)
+            removeCachedURL(for: key)
         }
     }
 
@@ -1511,29 +1513,29 @@ private actor StorageURLResolver {
         let raw = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else { return nil }
 
-        if let cached = resolvedCache[raw] {
+        if let cached = cachedURL(for: raw) {
             return cached
         }
 
         if raw.hasPrefix("https://") || raw.hasPrefix("http://") {
             let direct = URL(string: raw)
             if let direct {
-                resolvedCache[raw] = direct
+                storeCachedURL(direct, for: raw)
             }
             return direct
         }
 
         let objectPaths = objectPathCandidates(from: raw)
         for objectPath in objectPaths where !objectPath.isEmpty {
-            if let cached = resolvedCache[objectPath] {
-                resolvedCache[raw] = cached
+            if let cached = cachedURL(for: objectPath) {
+                storeCachedURL(cached, for: raw)
                 return cached
             }
 
             do {
                 let signedURL = try await signedStorageURL(for: objectPath)
-                resolvedCache[objectPath] = signedURL
-                resolvedCache[raw] = signedURL
+                storeCachedURL(signedURL, for: objectPath)
+                storeCachedURL(signedURL, for: raw)
                 return signedURL
             } catch {
                 continue
@@ -1549,9 +1551,43 @@ private actor StorageURLResolver {
         let fallback = mediaURL(fromRaw: raw)
 
         if let fallback {
-            resolvedCache[raw] = fallback
+            storeCachedURL(fallback, for: raw)
         }
         return fallback
+    }
+
+    private func cachedURL(for key: String) -> URL? {
+        guard let value = resolvedCache[key] else { return nil }
+        touchKey(key)
+        return value
+    }
+
+    private func storeCachedURL(_ url: URL, for key: String) {
+        resolvedCache[key] = url
+        touchKey(key)
+        evictIfNeeded()
+    }
+
+    private func removeCachedURL(for key: String) {
+        resolvedCache.removeValue(forKey: key)
+        cacheOrder.removeAll(where: { $0 == key })
+    }
+
+    private func touchKey(_ key: String) {
+        cacheOrder.removeAll(where: { $0 == key })
+        cacheOrder.append(key)
+    }
+
+    private func evictIfNeeded() {
+        guard resolvedCache.count > maxCacheEntries else { return }
+        let overflow = resolvedCache.count - maxCacheEntries
+        guard overflow > 0 else { return }
+
+        let keysToRemove = Array(cacheOrder.prefix(overflow))
+        for key in keysToRemove {
+            resolvedCache.removeValue(forKey: key)
+        }
+        cacheOrder.removeFirst(min(overflow, cacheOrder.count))
     }
 
     private func signedStorageURL(for objectPath: String) async throws -> URL {
