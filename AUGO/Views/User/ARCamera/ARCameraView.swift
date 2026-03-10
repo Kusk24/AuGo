@@ -131,12 +131,12 @@ struct ARCameraView: View {
                     ZStack {
                         Circle()
                             .fill(.black.opacity(0.45))
-                            .frame(width: 84, height: 84)
+                            .frame(width: 59, height: 59)
                         Circle()
                             .stroke(Color.white.opacity(0.22), lineWidth: 1)
-                            .frame(width: 84, height: 84)
+                            .frame(width: 59, height: 59)
                         Image(systemName: "location.north.fill")
-                            .font(.system(size: 34, weight: .bold))
+                            .font(.system(size: 24, weight: .bold))
                             .foregroundColor(Color.Brand.primary)
                             .rotationEffect(.degrees(viewModel.directionArrowAngle))
                     }
@@ -150,7 +150,7 @@ struct ARCameraView: View {
                         .clipShape(Capsule())
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                .padding(.bottom, 130)
+                .padding(.bottom, 82)
                 .transition(.opacity)
             }
 
@@ -810,8 +810,9 @@ private final class ARCameraViewModel: ObservableObject {
     private let comboRequiredHits = 3
     private let comboWindowSeconds: TimeInterval = 2.0
     private var isCaptureProcessing = false
-    private let maxRenderableHorizontalAccuracy: CLLocationAccuracy = 30
-    private let maxCatchHorizontalAccuracy: CLLocationAccuracy = 20
+    private let maxRenderableHorizontalAccuracy: CLLocationAccuracy = 45
+    private let maxCatchHorizontalAccuracy: CLLocationAccuracy = 35
+    private let gpsCatchBonusCapMeters: Double = 8
     private var arAdminConfigCache: ARAdminConfiguration = .default
     private var lastARAdminConfigFetch: Date?
     private var photoURLCache: [String: URL] = [:]
@@ -969,10 +970,15 @@ private final class ARCameraViewModel: ObservableObject {
             break
         }
 
-        guard let distance = distanceToSpawn(spawn), distance <= spawn.catchRadius else {
+        let catchBonus = gpsCatchBonusMeters(for: location.horizontalAccuracy)
+        let effectiveCatchRadius = spawn.catchRadius + catchBonus
+        guard let distance = distanceToSpawn(spawn), distance <= effectiveCatchRadius else {
             comboHits = 0
-            catchInstructionText = String(format: "Too far. Move within %.1f m to catch", spawn.catchRadius)
-            statusText = String(format: "Move %.1f m closer for catch zone", max((distanceToSpawn(spawn) ?? spawn.catchRadius) - spawn.catchRadius, 0))
+            catchInstructionText = String(format: "Too far. Move within %.1f m to catch", effectiveCatchRadius)
+            statusText = String(
+                format: "Move %.1f m closer for catch zone",
+                max((distanceToSpawn(spawn) ?? effectiveCatchRadius) - effectiveCatchRadius, 0)
+            )
             return
         }
 
@@ -1168,6 +1174,13 @@ private final class ARCameraViewModel: ObservableObject {
         return (smoothedDistanceMeters ?? rawDistance) + accuracyPenalty
     }
 
+    private func gpsCatchBonusMeters(for horizontalAccuracy: CLLocationAccuracy) -> Double {
+        guard horizontalAccuracy > 0 else { return 0 }
+        // Indoor GPS can drift. Add a small, capped grace radius to reduce false "too far" blocks.
+        let bonus = max(0, horizontalAccuracy - 12) * 0.22
+        return min(gpsCatchBonusCapMeters, bonus)
+    }
+
     private func updateRenderEligibility() {
         guard contentMode == .character else { return }
         guard let spawn = activeSpawn else {
@@ -1219,6 +1232,8 @@ private final class ARCameraViewModel: ObservableObject {
         }
 
         distanceText = String(format: "Distance: %.1f m", distance)
+        let accuracy = locationManager.lastLocation?.horizontalAccuracy ?? 0
+        let effectiveCatchRadius = spawn.catchRadius + gpsCatchBonusMeters(for: accuracy)
 
         if distance <= spawn.revealRadius {
             canRenderModel = true
@@ -1226,10 +1241,10 @@ private final class ARCameraViewModel: ObservableObject {
             statusText = "Spawn unlocked"
             rewardInfoText = "Nearest: \(spawn.title) • +\(formatCoins(spawn.coinValue)) coins • +\(spawn.pointValue) points"
             characterVisualScale = characterScale(for: distance, spawn: spawn)
-            if distance <= spawn.catchRadius {
+            if distance <= effectiveCatchRadius {
                 catchInstructionText = "Tap 3x quickly to catch (+\(formatCoins(spawn.coinValue)) coins, +\(spawn.pointValue) pts)"
             } else {
-                let need = max(distance - spawn.catchRadius, 0)
+                let need = max(distance - effectiveCatchRadius, 0)
                 catchInstructionText = String(format: "Move %.1f m closer to start 3-hit combo", need)
             }
         } else {
