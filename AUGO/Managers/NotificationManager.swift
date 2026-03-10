@@ -16,7 +16,6 @@ class NotificationManager: NSObject, ObservableObject {
     private let db = Firestore.firestore()
     private var userNotificationsListener: ListenerRegistration?
     private var listeningUserID: String?
-    private var hasPresentedInitialUnreadSummary = false
     private static let notificationsEnabledKey = "notifications_enabled"
 
     var unreadCount: Int {
@@ -88,7 +87,6 @@ class NotificationManager: NSObject, ObservableObject {
 
     func startListeningForUserNotifications(userId: String) {
         listeningUserID = userId
-        hasPresentedInitialUnreadSummary = false
         guard notificationsEnabled else {
             userNotificationsListener?.remove()
             userNotificationsListener = nil
@@ -118,6 +116,7 @@ class NotificationManager: NSObject, ObservableObject {
             content.title = title
             content.body = body
             content.sound = .default
+            content.threadIdentifier = "augo.notifications"
 
             let request = UNNotificationRequest(
                 identifier: identifier,
@@ -126,6 +125,8 @@ class NotificationManager: NSObject, ObservableObject {
             )
 
             do {
+                // Prevent duplicate pending entries for the same event id.
+                UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [identifier])
                 try await UNUserNotificationCenter.current().add(request)
                 print("✅ Local notification sent: \(title)")
             } catch {
@@ -150,86 +151,73 @@ class NotificationManager: NSObject, ObservableObject {
         let query = useOrderedQuery
             ? baseQuery.order(by: "createdAt", descending: true).limit(to: 100)
             : baseQuery.limit(to: 200)
-        
-        var isFirstLoad = true
+
+        var isInitialSnapshot = true
+        let listenerAttachedAt = Date()
 
         userNotificationsListener = query.addSnapshotListener { [weak self] snapshot, error in
-                guard let self else { return }
-                Task { @MainActor in
-                    if let error {
-                        let message = error.localizedDescription
-                        print("❌ user_notifications listener error: \(message)")
-                        if useOrderedQuery, message.localizedCaseInsensitiveContains("requires an index") {
-                            print("⚠️ user_notifications missing index; switching to fallback listener")
-                            self.attachUserNotificationsListener(userId: userId, useOrderedQuery: false)
-                        }
-                        return
+            guard let self else { return }
+            Task { @MainActor in
+                if let error {
+                    let message = error.localizedDescription
+                    print("❌ user_notifications listener error: \(message)")
+                    if useOrderedQuery, message.localizedCaseInsensitiveContains("requires an index") {
+                        print("⚠️ user_notifications missing index; switching to fallback listener")
+                        self.attachUserNotificationsListener(userId: userId, useOrderedQuery: false)
                     }
+                    return
+                }
 
-                    guard let documents = snapshot?.documents else { return }
-                    if !useOrderedQuery {
-                        self.receivedNotifications.removeAll()
+                guard let snapshot else { return }
+
+                if isInitialSnapshot {
+                    let initial = snapshot.documents.compactMap { self.remoteNotification(from: $0) }
+                    self.receivedNotifications = initial.sorted { $0.receivedAt > $1.receivedAt }
+                    if self.receivedNotifications.count > 200 {
+                        self.receivedNotifications = Array(self.receivedNotifications.prefix(200))
                     }
-                    
-                    for doc in documents {
-                        let data = doc.data()
-                        let title = (data["title"] as? String) ?? "Notification"
-                        let body = (data["body"] as? String) ?? (data["message"] as? String) ?? ""
-                        let createdAt = self.parseFirestoreDate(data["createdAt"]) ?? Date()
-                        let isRead = data["isRead"] as? Bool ?? false
-                        
-                        let notification = PushNotification(
-                            id: doc.documentID,
-                            title: title,
-                            body: body,
-                            data: data.reduce(into: [AnyHashable: Any]()) { result, item in
-                                result[item.key] = item.value
-                            },
-                            receivedAt: createdAt,
-                            isRead: isRead,
-                            isRemote: true
-                        )
-                        
-                        // Check if this is a new notification
-                        let isNewNotification = !self.receivedNotifications.contains(where: { $0.id == notification.id })
-                        
+                    isInitialSnapshot = false
+                    return
+                }
+
+                for change in snapshot.documentChanges {
+                    switch change.type {
+                    case .added:
+                        guard let notification = self.remoteNotification(from: change.document) else { continue }
+                        let existedBefore = self.receivedNotifications.contains { $0.id == notification.id }
                         self.upsertNotification(notification)
-                        
-                        // Send local notification for new items (but not on first load)
-                        if !isFirstLoad && isNewNotification {
-                            self.sendLocalNotification(title: title, body: body, identifier: doc.documentID)
-                        }
-                    }
 
-                    if isFirstLoad && !self.hasPresentedInitialUnreadSummary {
-                        let unreadCount = self.receivedNotifications.filter { !$0.isRead }.count
-                        if unreadCount > 0 {
+                        // Keep delivery simple: only notify for truly new, unread, and fresh entries.
+                        let shouldAlert = !existedBefore
+                            && !notification.isRead
+                            && notification.receivedAt >= listenerAttachedAt
+                        if shouldAlert {
                             self.sendLocalNotification(
-                                title: "Notifications",
-                                body: "You have \(unreadCount) unread notification\(unreadCount == 1 ? "" : "s").",
-                                identifier: "initial_unread_summary_\(userId)"
+                                title: notification.title,
+                                body: notification.body,
+                                identifier: notification.id
                             )
                         }
-                        self.hasPresentedInitialUnreadSummary = true
+
+                    case .modified:
+                        guard let notification = self.remoteNotification(from: change.document) else { continue }
+                        self.upsertNotification(notification)
+
+                    case .removed:
+                        self.receivedNotifications.removeAll { $0.id == change.document.documentID }
+
+                    @unknown default:
+                        break
                     }
-                    
-                    if !useOrderedQuery {
-                        self.receivedNotifications.sort { $0.receivedAt > $1.receivedAt }
-                        if self.receivedNotifications.count > 100 {
-                            self.receivedNotifications = Array(self.receivedNotifications.prefix(100))
-                        }
-                    }
-                    
-                    isFirstLoad = false
                 }
             }
+        }
     }
 
     func stopListeningForUserNotifications() {
         userNotificationsListener?.remove()
         userNotificationsListener = nil
         listeningUserID = nil
-        hasPresentedInitialUnreadSummary = false
         receivedNotifications = []
     }
 
@@ -246,6 +234,7 @@ class NotificationManager: NSObject, ObservableObject {
         } else {
             userNotificationsListener?.remove()
             userNotificationsListener = nil
+            clearSystemNotifications()
         }
     }
 
@@ -281,6 +270,12 @@ class NotificationManager: NSObject, ObservableObject {
         if receivedNotifications.count > 200 {
             receivedNotifications = Array(receivedNotifications.prefix(200))
         }
+    }
+
+    private func clearSystemNotifications() {
+        let center = UNUserNotificationCenter.current()
+        center.removeAllPendingNotificationRequests()
+        center.removeAllDeliveredNotifications()
     }
     
     // MARK: - Handle Notification Tap
@@ -333,6 +328,29 @@ class NotificationManager: NSObject, ObservableObject {
         } catch {
             print("⚠️ Failed to mark notification as unread: \(error.localizedDescription)")
         }
+    }
+
+    private func remoteNotification(from document: QueryDocumentSnapshot) -> PushNotification? {
+        let data = document.data()
+        let title = ((data["title"] as? String) ?? "Notification").trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = ((data["body"] as? String) ?? (data["message"] as? String) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty || !body.isEmpty else { return nil }
+
+        let createdAt = parseFirestoreDate(data["createdAt"]) ?? .distantPast
+        let isRead = data["isRead"] as? Bool ?? false
+
+        return PushNotification(
+            id: document.documentID,
+            title: title.isEmpty ? "Notification" : title,
+            body: body,
+            data: data.reduce(into: [AnyHashable: Any]()) { result, item in
+                result[item.key] = item.value
+            },
+            receivedAt: createdAt,
+            isRead: isRead,
+            isRemote: true
+        )
     }
 
     private func parseFirestoreDate(_ value: Any?) -> Date? {
