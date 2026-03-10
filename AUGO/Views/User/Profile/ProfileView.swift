@@ -20,7 +20,8 @@ struct ProfileView: View {
     @State private var selectedCapturePreviewURL: URL?
     @State private var selectedCaptureRarity: String?
     @State private var selectedCaptureDescription: String?
-    @State private var spawnMetadataByID: [String: ARSpawnMetadata] = [:]
+    @State private var spawnCatalogByID: [String: ARSpawnCatalogCharacter] = [:]
+    @State private var allCharacters: [ARSpawnCatalogCharacter] = []
     @State private var selectedProfilePhotoItem: PhotosPickerItem?
     @State private var isUploadingProfilePhoto = false
     @State private var showProfileCameraPicker = false
@@ -79,6 +80,47 @@ struct ProfileView: View {
             .sorted { ($0.lastCapturedAt ?? .distantPast) > ($1.lastCapturedAt ?? .distantPast) }
     }
 
+    private var capturesBySourceID: [String: ARCapturedCharacter] {
+        var merged: [String: ARCapturedCharacter] = [:]
+        for capture in capturedCharacters {
+            guard let sourceID = sourceSpawnLookupID(for: capture) else { continue }
+            if let existing = merged[sourceID] {
+                let existingDate = existing.lastCapturedAt ?? .distantPast
+                let incomingDate = capture.lastCapturedAt ?? .distantPast
+                if incomingDate > existingDate {
+                    merged[sourceID] = capture
+                }
+            } else {
+                merged[sourceID] = capture
+            }
+        }
+        return merged
+    }
+
+    private var displayedCharacterCollection: [ProfileCharacterCollectionItem] {
+        var rows = allCharacters.map { catalog in
+            ProfileCharacterCollectionItem(catalog: catalog, capture: capturesBySourceID[catalog.id])
+        }
+
+        // Keep captured records visible even if the source spawn is no longer in the current catalog.
+        let knownIDs = Set(rows.map(\.id))
+        let extraCapturedRows = capturedCharacters.compactMap { capture -> ProfileCharacterCollectionItem? in
+            guard let sourceID = sourceSpawnLookupID(for: capture), !knownIDs.contains(sourceID) else { return nil }
+            return ProfileCharacterCollectionItem(captureOnly: capture, sourceSpawnID: sourceID)
+        }
+        rows.append(contentsOf: extraCapturedRows)
+
+        return rows.sorted {
+            if $0.isCaptured != $1.isCaptured {
+                return $0.isCaptured && !$1.isCaptured
+            }
+            if let lhsLast = $0.lastCapturedAt, let rhsLast = $1.lastCapturedAt, lhsLast != rhsLast {
+                return lhsLast > rhsLast
+            }
+            return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+        }
+    }
+
     private func sourceSpawnLookupID(for capture: ARCapturedCharacter) -> String? {
         if let source = capture.sourceSpawnId?.trimmingCharacters(in: .whitespacesAndNewlines), !source.isEmpty {
             return source
@@ -94,7 +136,7 @@ struct ProfileView: View {
             return rarity
         }
         guard let sourceID = sourceSpawnLookupID(for: capture) else { return nil }
-        return spawnMetadataByID[sourceID]?.rarity
+        return spawnCatalogByID[sourceID]?.rarity
     }
 
     private func effectiveDescription(for capture: ARCapturedCharacter) -> String? {
@@ -102,7 +144,7 @@ struct ProfileView: View {
             return text
         }
         guard let sourceID = sourceSpawnLookupID(for: capture) else { return nil }
-        return spawnMetadataByID[sourceID]?.description
+        return spawnCatalogByID[sourceID]?.description
     }
 
     var body: some View {
@@ -288,18 +330,19 @@ struct ProfileView: View {
                             .font(.footnote)
                             .foregroundColor(.gray)
 
-                        if capturedCharacters.isEmpty {
-                            Text("No captures yet. Catch AR characters to see them here.")
+                        if displayedCharacterCollection.isEmpty {
+                            Text("No characters available right now.")
                                 .font(.subheadline)
                                 .foregroundColor(.gray)
                                 .padding(.vertical, 8)
                         } else {
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 12) {
-                                    ForEach(capturedCharacters) { capture in
+                                    ForEach(displayedCharacterCollection) { character in
                                         CapturedCharacterCard(
-                                            capture: capture,
+                                            character: character,
                                             onTap: { previewURL in
+                                                guard let capture = character.capture else { return }
                                                 selectedCapturePreviewURL = previewURL
                                                 selectedCaptureRarity = effectiveRarity(for: capture)
                                                 selectedCaptureDescription = effectiveDescription(for: capture)
@@ -456,11 +499,11 @@ struct ProfileView: View {
             postManager.fetchUserPosts(userId: userId)
             authManager.fetchUserProfile(uid: userId)
             await postManager.refreshUserEconomy(userId: userId)
-            await refreshCapturedSpawnMetadata()
+            await refreshCharacterCatalog()
             await refreshDisplayedProfileImage()
         }
         .task(id: capturedCharacters.map(\.spawnId).joined(separator: "|")) {
-            await refreshCapturedSpawnMetadata()
+            await refreshCharacterCatalog()
         }
         .task(
             id: "\(authManager.userProfile?.profileImageURL ?? "")|\(authManager.userProfile?.profileImagePath ?? "")"
@@ -524,37 +567,25 @@ struct ProfileView: View {
         }
     }
 
-    private func refreshCapturedSpawnMetadata() async {
-        let sourceIDs = Array(Set(capturedCharacters.compactMap { sourceSpawnLookupID(for: $0) }))
-        guard !sourceIDs.isEmpty else {
-            await MainActor.run { spawnMetadataByID = [:] }
-            return
+    private func refreshCharacterCatalog() async {
+        let db = Firestore.firestore()
+        var parsedCharacters: [ARSpawnCatalogCharacter] = []
+
+        do {
+            let snapshot = try await db.collection("ar_spawns").getDocuments()
+            parsedCharacters = snapshot.documents.compactMap { document in
+                ARSpawnCatalogCharacter.fromDocument(documentID: document.documentID, data: document.data())
+            }
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        } catch {
+            print("❌ Failed loading AR character catalog for profile: \(error.localizedDescription)")
         }
 
-        let db = Firestore.firestore()
-        var merged: [String: ARSpawnMetadata] = [:]
-        let chunkSize = 10
-        var start = 0
-        while start < sourceIDs.count {
-            let end = min(start + chunkSize, sourceIDs.count)
-            let chunk = Array(sourceIDs[start..<end])
-            do {
-                let snapshot = try await db.collection("ar_spawns")
-                    .whereField(FieldPath.documentID(), in: chunk)
-                    .getDocuments()
-                for doc in snapshot.documents {
-                    let data = doc.data()
-                    merged[doc.documentID] = ARSpawnMetadata(
-                        rarity: data["rarity"] as? String,
-                        description: data["description"] as? String
-                    )
-                }
-            } catch {
-                print("❌ Failed loading AR spawn metadata for profile cards: \(error.localizedDescription)")
-            }
-            start = end
+        let byID = Dictionary(uniqueKeysWithValues: parsedCharacters.map { ($0.id, $0) })
+        await MainActor.run {
+            allCharacters = parsedCharacters
+            spawnCatalogByID = byID
         }
-        await MainActor.run { spawnMetadataByID = merged }
     }
 
     private func uploadProfilePhoto(from item: PhotosPickerItem) async {
@@ -687,9 +718,110 @@ struct ProfileView: View {
 
 }
 
-private struct ARSpawnMetadata {
+private struct ARSpawnCatalogCharacter: Identifiable {
+    let id: String
+    let title: String
+    let assetPath: String
+    let preview: String?
     let rarity: String?
     let description: String?
+    let coinValue: Double
+    let pointValue: Int
+    let catchableTime: Int
+
+    static func fromDocument(documentID: String, data: [String: Any]) -> ARSpawnCatalogCharacter? {
+        let rawTitle = (data["title"] as? String) ?? (data["name"] as? String) ?? ""
+        let title = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return nil }
+
+        let assetPath = ((data["assetPath"] as? String) ?? (data["modelPath"] as? String) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let preview = (data["preview"] as? String) ?? (data["previewPath"] as? String)
+        let rarity = data["rarity"] as? String
+        let description = data["description"] as? String
+        let coinValue = toDouble(data["coin_value"]) ?? 0
+        let pointValue = toInt(data["point"]) ?? 0
+        let catchableTime = max(1, toInt(data["catchable_time"]) ?? 1)
+
+        return ARSpawnCatalogCharacter(
+            id: documentID,
+            title: title,
+            assetPath: assetPath,
+            preview: preview,
+            rarity: rarity,
+            description: description,
+            coinValue: coinValue,
+            pointValue: pointValue,
+            catchableTime: catchableTime
+        )
+    }
+
+    private static func toDouble(_ value: Any?) -> Double? {
+        if let doubleValue = value as? Double { return doubleValue }
+        if let intValue = value as? Int { return Double(intValue) }
+        if let floatValue = value as? Float { return Double(floatValue) }
+        if let stringValue = value as? String { return Double(stringValue) }
+        return nil
+    }
+
+    private static func toInt(_ value: Any?) -> Int? {
+        if let intValue = value as? Int { return intValue }
+        if let doubleValue = value as? Double { return Int(doubleValue) }
+        if let floatValue = value as? Float { return Int(floatValue) }
+        if let stringValue = value as? String { return Int(stringValue) }
+        return nil
+    }
+}
+
+private struct ProfileCharacterCollectionItem: Identifiable {
+    let id: String
+    let title: String
+    let assetPath: String
+    let preview: String?
+    let rarity: String?
+    let description: String?
+    let coinValue: Double
+    let pointValue: Int
+    let catchableTime: Int
+    let capture: ARCapturedCharacter?
+
+    var catchCount: Int {
+        capture?.catchCount ?? 0
+    }
+
+    var lastCapturedAt: Date? {
+        capture?.lastCapturedAt
+    }
+
+    var isCaptured: Bool {
+        capture != nil && catchCount > 0
+    }
+
+    init(catalog: ARSpawnCatalogCharacter, capture: ARCapturedCharacter?) {
+        self.id = catalog.id
+        self.title = capture?.title ?? catalog.title
+        self.assetPath = capture?.assetPath ?? catalog.assetPath
+        self.preview = capture?.preview ?? catalog.preview
+        self.rarity = capture?.rarity ?? catalog.rarity
+        self.description = capture?.characterDescription ?? catalog.description
+        self.coinValue = capture?.coinValue ?? catalog.coinValue
+        self.pointValue = capture?.pointValue ?? catalog.pointValue
+        self.catchableTime = max(1, capture?.catchableTime ?? catalog.catchableTime)
+        self.capture = capture
+    }
+
+    init(captureOnly: ARCapturedCharacter, sourceSpawnID: String) {
+        self.id = sourceSpawnID
+        self.title = captureOnly.title
+        self.assetPath = captureOnly.assetPath
+        self.preview = captureOnly.preview
+        self.rarity = captureOnly.rarity
+        self.description = captureOnly.characterDescription
+        self.coinValue = captureOnly.coinValue
+        self.pointValue = captureOnly.pointValue
+        self.catchableTime = max(1, captureOnly.catchableTime)
+        self.capture = captureOnly
+    }
 }
 
 private struct ProfileAlertItem: Identifiable {
@@ -1026,7 +1158,7 @@ private struct TodayPostCard: View {
 }
 
 private struct CapturedCharacterCard: View {
-    let capture: ARCapturedCharacter
+    let character: ProfileCharacterCollectionItem
     let onTap: (URL?) -> Void
     @State private var resolvedPreviewURL: URL?
     @State private var isLoadingPreview = false
@@ -1034,12 +1166,13 @@ private struct CapturedCharacterCard: View {
     @State private var isPreviewRetryScheduled = false
 
     private var previewURL: URL? { resolvedPreviewURL }
+    private var isCaptured: Bool { character.isCaptured }
 
     private var resolvedPreviewPath: String? {
-        if let explicit = normalizedStorageObjectPath(capture.preview), !explicit.isEmpty {
+        if let explicit = normalizedStorageObjectPath(character.preview), !explicit.isEmpty {
             return explicit
         }
-        guard let asset = normalizedStorageObjectPath(capture.assetPath) else { return nil }
+        guard let asset = normalizedStorageObjectPath(character.assetPath), !asset.isEmpty else { return nil }
         guard let slashIndex = asset.lastIndex(of: "/") else { return nil }
         let folder = asset[..<slashIndex]
         return "\(folder)/preview.png"
@@ -1084,24 +1217,27 @@ private struct CapturedCharacterCard: View {
     }
 
     private var footerText: String {
-        if capture.catchCount >= capture.catchableTime {
-            return "Maxed · +\(coinsText(capture.coinValue)) coins · +\(capture.pointValue) pts"
+        guard let capture = character.capture else {
+            return "Not captured yet"
+        }
+        if capture.catchCount >= max(1, capture.catchableTime) {
+            return "Maxed · +\(coinsText(character.coinValue)) coins · +\(character.pointValue) pts"
         }
         if let next = capture.nextCatchAt, next > Date() {
             let formatter = RelativeDateTimeFormatter()
             formatter.unitsStyle = .short
             return "Next \(formatter.localizedString(for: next, relativeTo: Date()))"
         }
-        return "Ready again · +\(coinsText(capture.coinValue)) coins · +\(capture.pointValue) pts"
+        return "Ready again · +\(coinsText(character.coinValue)) coins · +\(character.pointValue) pts"
     }
 
     private var progress: Double {
-        guard capture.catchableTime > 0 else { return 1 }
-        return min(1, Double(capture.catchCount) / Double(capture.catchableTime))
+        guard character.catchableTime > 0 else { return 1 }
+        return min(1, Double(character.catchCount) / Double(character.catchableTime))
     }
 
     private var rarityText: String? {
-        let trimmed = capture.rarity?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let trimmed = character.rarity?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return trimmed.isEmpty ? nil : trimmed
     }
 
@@ -1111,6 +1247,7 @@ private struct CapturedCharacterCard: View {
 
     var body: some View {
         Button {
+            guard isCaptured else { return }
             onTap(previewURL)
         } label: {
             VStack(alignment: .leading, spacing: 10) {
@@ -1146,28 +1283,29 @@ private struct CapturedCharacterCard: View {
                     isPreviewRetryScheduled = false
                     await loadPreviewURL()
                 }
+                .saturation(isCaptured ? 1 : 0)
 
-                Text(capture.title)
+                Text(character.title)
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
-                    .foregroundColor(.primary)
+                    .foregroundColor(isCaptured ? .primary : .secondary)
 
                 if let rarity = rarityText {
                     Text(rarity)
                         .font(.caption2.weight(.bold))
-                        .foregroundColor(rarityBadgeColor)
+                        .foregroundColor(isCaptured ? rarityBadgeColor : .gray)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 5)
                         .background(Color.white.opacity(0.26))
                         .clipShape(Capsule())
                 }
 
-                Text("\(capture.catchCount)/\(capture.catchableTime) captured")
+                Text("\(character.catchCount)/\(character.catchableTime) captured")
                     .font(.caption)
                     .foregroundColor(.secondary)
 
                 ProgressView(value: progress)
-                    .tint(Color.Brand.primary)
+                    .tint(isCaptured ? Color.Brand.primary : .gray)
 
                 Text(footerText)
                     .font(.caption)
@@ -1182,10 +1320,15 @@ private struct CapturedCharacterCard: View {
                     .fill(Color.Brand.surface)
                     .overlay(
                         RoundedRectangle(cornerRadius: 16)
-                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                            .stroke(
+                                isCaptured ? Color.primary.opacity(0.08) : Color.gray.opacity(0.22),
+                                lineWidth: 1
+                            )
                     )
             )
             .shadow(color: .black.opacity(0.05), radius: 4, y: 2)
+            .saturation(isCaptured ? 1 : 0)
+            .opacity(isCaptured ? 1 : 0.84)
         }
         .buttonStyle(.plain)
     }
@@ -1196,7 +1339,7 @@ private struct CapturedCharacterCard: View {
                 Circle()
                     .fill(Color.Brand.primary.opacity(0.18))
                     .frame(width: 54, height: 54)
-                Text(String(capture.title.prefix(1)).uppercased())
+                Text(String(character.title.prefix(1)).uppercased())
                     .font(.title3.weight(.bold))
                     .foregroundColor(Color.Brand.primary)
             }
