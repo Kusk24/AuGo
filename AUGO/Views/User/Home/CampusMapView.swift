@@ -329,14 +329,13 @@ struct CampusMapView: View {
     }
 
     private var rarityLegendRows: [(label: String, rarity: String)] {
-        [
-            ("Ultra Rare", "Ultra Rare"),
-            ("Rare", "Rare"),
-            ("Uncommon", "Uncommon"),
-            ("Common", "Common"),
-            ("Very Common", "Very Common"),
-            ("Unlimited", "Unlimited")
-        ]
+        ARRarityPalette.orderedLevels.map { level in
+            (level.label, level.key)
+        }
+    }
+
+    private var postTopicLegendRows: [Post.PostCategory] {
+        categoryFilterOptions
     }
     
     private var notificationIcon: some View {
@@ -885,19 +884,55 @@ struct CampusMapView: View {
         }
         .sheet(isPresented: $showRarityLegend) {
             NavigationStack {
-                List {
-                    ForEach(rarityLegendRows, id: \.label) { row in
-                        HStack(spacing: 12) {
-                            Circle()
-                                .fill(ARRarityPalette.accentColor(for: row.rarity))
-                                .frame(width: 12, height: 12)
-                            Text(row.label)
-                                .font(.subheadline.weight(.semibold))
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("AR Character Rarity")
+                                .font(.headline)
+                                .foregroundStyle(Color.Brand.primary)
+
+                            ForEach(rarityLegendRows, id: \.label) { row in
+                                HStack(spacing: 12) {
+                                    Circle()
+                                        .fill(ARRarityPalette.accentColor(for: row.rarity))
+                                        .frame(width: 14, height: 14)
+                                    Text(row.label)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundColor(.primary)
+                                }
+                                .padding(.vertical, 4)
+                            }
                         }
-                        .padding(.vertical, 4)
+
+                        Divider()
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Post Topics")
+                                .font(.headline)
+                                .foregroundStyle(Color.Brand.primary)
+
+                            ForEach(postTopicLegendRows) { category in
+                                let visual = ContentSymbolKit.postVisual(for: category)
+                                HStack(spacing: 12) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(visual.color)
+                                            .frame(width: 22, height: 22)
+                                        Image(systemName: visual.symbol)
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundStyle(.white)
+                                    }
+                                    Text(category.rawValue)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundColor(.primary)
+                                }
+                                .padding(.vertical, 4)
+                            }
+                        }
                     }
+                    .padding(16)
                 }
-                .navigationTitle("AR Rarity Colors")
+                .navigationTitle("Map Legend")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -907,7 +942,8 @@ struct CampusMapView: View {
                     }
                 }
             }
-            .presentationDetents([.fraction(0.42)])
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
     }
 
