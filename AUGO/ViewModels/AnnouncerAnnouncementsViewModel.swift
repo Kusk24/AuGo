@@ -12,9 +12,6 @@ final class AnnouncerAnnouncementsViewModel: ObservableObject {
     
     private let db = Firestore.firestore()
     private var listener: ListenerRegistration?
-    private var lastKnownStatusByAnnouncementID: [String: AnnouncementStatus] = [:]
-    private var hasPrimedStatusSnapshot = false
-    private let notificationManager = NotificationManager.shared
     
     deinit {
         listener?.remove()
@@ -45,41 +42,8 @@ final class AnnouncerAnnouncementsViewModel: ObservableObject {
                     .compactMap(self.parseAnnouncement)
                     .sorted { $0.createdAt > $1.createdAt } ?? []
 
-                self.handleAnnouncementDecisionNotifications(parsed)
                 self.announcements = parsed
             }
-    }
-
-    private func handleAnnouncementDecisionNotifications(_ parsed: [Announcement]) {
-        let newStatusMap = Dictionary(uniqueKeysWithValues: parsed.map { ($0.id, $0.status) })
-        defer {
-            lastKnownStatusByAnnouncementID = newStatusMap
-            hasPrimedStatusSnapshot = true
-        }
-
-        guard hasPrimedStatusSnapshot else { return }
-
-        for announcement in parsed {
-            let oldStatus = lastKnownStatusByAnnouncementID[announcement.id]
-            guard let oldStatus, oldStatus != announcement.status else { continue }
-
-            switch announcement.status {
-            case .scheduled, .active:
-                notificationManager.addInAppNotification(
-                    id: "announcement_decision_\(announcement.id)",
-                    title: "Announcement Approved",
-                    body: "\"\(announcement.title)\" was approved by admin."
-                )
-            case .declined:
-                notificationManager.addInAppNotification(
-                    id: "announcement_decision_\(announcement.id)",
-                    title: "Announcement Rejected",
-                    body: "\"\(announcement.title)\" was rejected by admin."
-                )
-            default:
-                break
-            }
-        }
     }
     
     var filteredAnnouncements: [Announcement] {

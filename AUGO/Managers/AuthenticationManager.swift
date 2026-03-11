@@ -58,10 +58,6 @@ class AuthenticationManager: ObservableObject {
         if let currentUser = auth.currentUser {
             self.user = currentUser
             self.isAuthenticated = true
-            notificationManager.startListeningForUserNotifications(userId: currentUser.uid)
-            Task {
-                await notificationManager.registerDeviceForNotifications(userId: currentUser.uid)
-            }
             // Determine role and fetch profile
             detectRoleAndFetchProfile(uid: currentUser.uid)
         } else {
@@ -69,7 +65,7 @@ class AuthenticationManager: ObservableObject {
             self.isProfileComplete = false
             self.role = .unknown
             self.isCheckingAuth = false
-            notificationManager.stopListeningForUserNotifications()
+            notificationManager.stopListeningForNotifications()
         }
     }
     
@@ -118,13 +114,12 @@ class AuthenticationManager: ObservableObject {
             
             self.user = authResult.user
             self.announcerProfile = announcerProfile
+            self.userProfile = nil
             self.role = .announcer
             self.isAuthenticated = true
             self.isProfileComplete = true
             self.isCheckingAuth = false
-            notificationManager.startListeningForUserNotifications(userId: authResult.user.uid)
-            
-            await notificationManager.registerDeviceForNotifications(userId: authResult.user.uid)
+            notificationManager.startListeningForAnnouncerNotifications(userId: authResult.user.uid)
         } catch {
             if let firestoreErrorCode = FirestoreErrorCode.Code(rawValue: (error as NSError).code),
                firestoreErrorCode == .permissionDenied {
@@ -395,7 +390,9 @@ class AuthenticationManager: ObservableObject {
 
         self.user = authResult.user
         self.isAuthenticated = true
-        notificationManager.startListeningForUserNotifications(userId: authResult.user.uid)
+        if requiredRole == .announcer {
+            notificationManager.startListeningForAnnouncerNotifications(userId: authResult.user.uid)
+        }
 
         if requiredRole == .announcer {
             detectRoleAndFetchProfile(uid: authResult.user.uid)
@@ -403,7 +400,6 @@ class AuthenticationManager: ObservableObject {
             fetchUserProfile(uid: authResult.user.uid)
         }
 
-        await notificationManager.registerDeviceForNotifications(userId: authResult.user.uid)
     }
 
     private func handleAccountExistsWithDifferentCredential(
@@ -477,6 +473,10 @@ class AuthenticationManager: ObservableObject {
                 
                 if let announcerProfile {
                     self.announcerProfile = announcerProfile
+                    self.userProfile = nil
+                    self.userProfileListener?.remove()
+                    self.userProfileListener = nil
+                    self.notificationManager.startListeningForAnnouncerNotifications(userId: uid)
                     self.role = .announcer
                     self.isProfileComplete = true
                     self.isCheckingAuth = false
@@ -524,6 +524,8 @@ class AuthenticationManager: ObservableObject {
     
     // MARK: - Fetch User Profile
     func fetchUserProfile(uid: String) {
+        notificationManager.startListeningForUserNotifications(userId: uid)
+        announcerProfile = nil
         userProfileListener?.remove()
         userProfileListener = db.collection("users").document(uid).addSnapshotListener { [weak self] snapshot, error in
             guard let self = self else { return }
@@ -858,7 +860,7 @@ class AuthenticationManager: ObservableObject {
             userProfileListener = nil
             pendingOAuthCredential = nil
             pendingOAuthEmail = nil
-            notificationManager.stopListeningForUserNotifications()
+            notificationManager.stopListeningForNotifications()
             self.user = nil
             self.userProfile = nil
             self.isAuthenticated = false

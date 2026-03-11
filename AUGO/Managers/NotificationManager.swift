@@ -8,14 +8,29 @@ import UIKit
 
 @MainActor
 class NotificationManager: NSObject, ObservableObject {
+    enum NotificationChannel {
+        case user
+        case announcer
+
+        var collectionName: String {
+            switch self {
+            case .user:
+                return "user_notifications"
+            case .announcer:
+                return "announcement_notifications"
+            }
+        }
+    }
+
     @Published var fcmToken: String?
     @Published var notificationPermissionGranted = false
     @Published var receivedNotifications: [PushNotification] = []
     @Published var notificationsEnabled: Bool
     
     private let db = Firestore.firestore()
-    private var userNotificationsListener: ListenerRegistration?
+    private var notificationsListener: ListenerRegistration?
     private var listeningUserID: String?
+    private var listeningChannel: NotificationChannel = .user
     private static let notificationsEnabledKey = "notifications_enabled"
 
     var unreadCount: Int {
@@ -86,16 +101,26 @@ class NotificationManager: NSObject, ObservableObject {
     }
 
     func startListeningForUserNotifications(userId: String) {
+        startListeningForNotifications(userId: userId, channel: .user)
+    }
+
+    func startListeningForAnnouncerNotifications(userId: String) {
+        startListeningForNotifications(userId: userId, channel: .announcer)
+    }
+
+    private func startListeningForNotifications(userId: String, channel: NotificationChannel) {
         listeningUserID = userId
+        listeningChannel = channel
         guard notificationsEnabled else {
-            userNotificationsListener?.remove()
-            userNotificationsListener = nil
+            notificationsListener?.remove()
+            notificationsListener = nil
             return
         }
+        receivedNotifications = []
         Task {
             await registerDeviceForNotifications(userId: userId)
         }
-        attachUserNotificationsListener(userId: userId, useOrderedQuery: true)
+        attachNotificationsListener(userId: userId, channel: channel, useOrderedQuery: true)
     }
     
     // MARK: - Send Local Notification
@@ -144,9 +169,10 @@ class NotificationManager: NSObject, ObservableObject {
         )
     }
 
-    private func attachUserNotificationsListener(userId: String, useOrderedQuery: Bool) {
-        userNotificationsListener?.remove()
-        let baseQuery = db.collection("user_notifications")
+    private func attachNotificationsListener(userId: String, channel: NotificationChannel, useOrderedQuery: Bool) {
+        notificationsListener?.remove()
+        let collectionName = channel.collectionName
+        let baseQuery = db.collection(collectionName)
             .whereField("userId", isEqualTo: userId)
         let query = useOrderedQuery
             ? baseQuery.order(by: "createdAt", descending: true).limit(to: 100)
@@ -155,15 +181,15 @@ class NotificationManager: NSObject, ObservableObject {
         var isInitialSnapshot = true
         let listenerAttachedAt = Date()
 
-        userNotificationsListener = query.addSnapshotListener { [weak self] snapshot, error in
+        notificationsListener = query.addSnapshotListener { [weak self] snapshot, error in
             guard let self else { return }
             Task { @MainActor in
                 if let error {
                     let message = error.localizedDescription
-                    print("❌ user_notifications listener error: \(message)")
+                    print("❌ \(collectionName) listener error: \(message)")
                     if useOrderedQuery, message.localizedCaseInsensitiveContains("requires an index") {
-                        print("⚠️ user_notifications missing index; switching to fallback listener")
-                        self.attachUserNotificationsListener(userId: userId, useOrderedQuery: false)
+                        print("⚠️ \(collectionName) missing index; switching to fallback listener")
+                        self.attachNotificationsListener(userId: userId, channel: channel, useOrderedQuery: false)
                     }
                     return
                 }
@@ -171,7 +197,9 @@ class NotificationManager: NSObject, ObservableObject {
                 guard let snapshot else { return }
 
                 if isInitialSnapshot {
-                    let initial = snapshot.documents.compactMap { self.remoteNotification(from: $0) }
+                    let initial = snapshot.documents.compactMap {
+                        self.remoteNotification(from: $0, collectionName: collectionName)
+                    }
                     self.receivedNotifications = initial.sorted { $0.receivedAt > $1.receivedAt }
                     if self.receivedNotifications.count > 200 {
                         self.receivedNotifications = Array(self.receivedNotifications.prefix(200))
@@ -183,7 +211,7 @@ class NotificationManager: NSObject, ObservableObject {
                 for change in snapshot.documentChanges {
                     switch change.type {
                     case .added:
-                        guard let notification = self.remoteNotification(from: change.document) else { continue }
+                        guard let notification = self.remoteNotification(from: change.document, collectionName: collectionName) else { continue }
                         let existedBefore = self.receivedNotifications.contains { $0.id == notification.id }
                         self.upsertNotification(notification)
 
@@ -200,7 +228,7 @@ class NotificationManager: NSObject, ObservableObject {
                         }
 
                     case .modified:
-                        guard let notification = self.remoteNotification(from: change.document) else { continue }
+                        guard let notification = self.remoteNotification(from: change.document, collectionName: collectionName) else { continue }
                         self.upsertNotification(notification)
 
                     case .removed:
@@ -214,11 +242,19 @@ class NotificationManager: NSObject, ObservableObject {
         }
     }
 
-    func stopListeningForUserNotifications() {
-        userNotificationsListener?.remove()
-        userNotificationsListener = nil
+    func stopListeningForNotifications() {
+        notificationsListener?.remove()
+        notificationsListener = nil
         listeningUserID = nil
         receivedNotifications = []
+    }
+
+    func stopListeningForUserNotifications() {
+        stopListeningForNotifications()
+    }
+
+    func stopListeningForAnnouncerNotifications() {
+        stopListeningForNotifications()
     }
 
     func setNotificationsEnabled(_ enabled: Bool) {
@@ -226,14 +262,14 @@ class NotificationManager: NSObject, ObservableObject {
         UserDefaults.standard.set(enabled, forKey: Self.notificationsEnabledKey)
         if enabled {
             if let uid = listeningUserID {
-                startListeningForUserNotifications(userId: uid)
+                startListeningForNotifications(userId: uid, channel: listeningChannel)
                 Task {
                     await registerDeviceForNotifications(userId: uid)
                 }
             }
         } else {
-            userNotificationsListener?.remove()
-            userNotificationsListener = nil
+            notificationsListener?.remove()
+            notificationsListener = nil
             clearSystemNotifications()
         }
     }
@@ -289,16 +325,18 @@ class NotificationManager: NSObject, ObservableObject {
         guard !notificationId.isEmpty else { return }
 
         var shouldSyncToFirestore = false
+        var collectionName: String?
         if let idx = receivedNotifications.firstIndex(where: { $0.id == notificationId }) {
             if receivedNotifications[idx].isRead { return }
             shouldSyncToFirestore = receivedNotifications[idx].isRemote
+            collectionName = receivedNotifications[idx].collectionName ?? listeningChannel.collectionName
             receivedNotifications[idx].isRead = true
         }
 
-        guard shouldSyncToFirestore else { return }
+        guard shouldSyncToFirestore, let collectionName else { return }
 
         do {
-            try await db.collection("user_notifications").document(notificationId).setData([
+            try await db.collection(collectionName).document(notificationId).setData([
                 "isRead": true,
                 "readAt": Timestamp(date: Date())
             ], merge: true)
@@ -312,16 +350,18 @@ class NotificationManager: NSObject, ObservableObject {
         guard !notificationId.isEmpty else { return }
 
         var shouldSyncToFirestore = false
+        var collectionName: String?
         if let idx = receivedNotifications.firstIndex(where: { $0.id == notificationId }) {
             if !receivedNotifications[idx].isRead { return }
             shouldSyncToFirestore = receivedNotifications[idx].isRemote
+            collectionName = receivedNotifications[idx].collectionName ?? listeningChannel.collectionName
             receivedNotifications[idx].isRead = false
         }
 
-        guard shouldSyncToFirestore else { return }
+        guard shouldSyncToFirestore, let collectionName else { return }
 
         do {
-            try await db.collection("user_notifications").document(notificationId).setData([
+            try await db.collection(collectionName).document(notificationId).setData([
                 "isRead": false,
                 "updatedAt": Timestamp(date: Date())
             ], merge: true)
@@ -330,7 +370,7 @@ class NotificationManager: NSObject, ObservableObject {
         }
     }
 
-    private func remoteNotification(from document: QueryDocumentSnapshot) -> PushNotification? {
+    private func remoteNotification(from document: QueryDocumentSnapshot, collectionName: String) -> PushNotification? {
         let data = document.data()
         let title = ((data["title"] as? String) ?? "Notification").trimmingCharacters(in: .whitespacesAndNewlines)
         let body = ((data["body"] as? String) ?? (data["message"] as? String) ?? "")
@@ -349,7 +389,8 @@ class NotificationManager: NSObject, ObservableObject {
             },
             receivedAt: createdAt,
             isRead: isRead,
-            isRemote: true
+            isRemote: true,
+            collectionName: collectionName
         )
     }
 
@@ -456,8 +497,18 @@ struct PushNotification: Identifiable, Codable {
     let receivedAt: Date
     var isRead: Bool
     let isRemote: Bool
+    let collectionName: String?
 
-    init(id: String, title: String, body: String, data: [AnyHashable: Any], receivedAt: Date = Date(), isRead: Bool = false, isRemote: Bool = false) {
+    init(
+        id: String,
+        title: String,
+        body: String,
+        data: [AnyHashable: Any],
+        receivedAt: Date = Date(),
+        isRead: Bool = false,
+        isRemote: Bool = false,
+        collectionName: String? = nil
+    ) {
         self.id = id
         self.title = title
         self.body = body
@@ -465,11 +516,12 @@ struct PushNotification: Identifiable, Codable {
         self.receivedAt = receivedAt
         self.isRead = isRead
         self.isRemote = isRemote
+        self.collectionName = collectionName
     }
     
     // Custom coding keys to handle [AnyHashable: Any]
     enum CodingKeys: String, CodingKey {
-        case id, title, body, receivedAt, isRead, isRemote
+        case id, title, body, receivedAt, isRead, isRemote, collectionName
     }
     
     init(from decoder: Decoder) throws {
@@ -480,6 +532,7 @@ struct PushNotification: Identifiable, Codable {
         receivedAt = try container.decode(Date.self, forKey: .receivedAt)
         isRead = try container.decodeIfPresent(Bool.self, forKey: .isRead) ?? false
         isRemote = try container.decodeIfPresent(Bool.self, forKey: .isRemote) ?? false
+        collectionName = try container.decodeIfPresent(String.self, forKey: .collectionName)
         data = [:] // Default empty for decoding
     }
     
@@ -491,5 +544,6 @@ struct PushNotification: Identifiable, Codable {
         try container.encode(receivedAt, forKey: .receivedAt)
         try container.encode(isRead, forKey: .isRead)
         try container.encode(isRemote, forKey: .isRemote)
+        try container.encodeIfPresent(collectionName, forKey: .collectionName)
     }
 }
