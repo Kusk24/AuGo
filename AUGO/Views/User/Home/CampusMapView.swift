@@ -59,6 +59,10 @@ struct CampusMapView: View {
     @State private var arSpawnDots: [ARSpawnMapDot] = []
     @State private var arSpawnsListener: ListenerRegistration?
 
+    private var coinBalance: Double {
+        postManager.userEconomy?.coinBalance ?? authManager.userProfile?.coinBalance ?? 0
+    }
+
     private var defaultMapRegion: MKCoordinateRegion {
         let span = MKCoordinateSpan(
             latitudeDelta: viewModel.campusRegion.span.latitudeDelta * 1.15,
@@ -317,6 +321,24 @@ struct CampusMapView: View {
         } label: {
             notificationIcon
         }
+    }
+
+    private var coinBalanceBadge: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "bitcoinsign.circle.fill")
+                .foregroundStyle(Color.Brand.coin)
+            Text(coinsText(coinBalance))
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.primary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Color.Brand.surface)
+        .clipShape(Capsule())
+        .overlay(
+            Capsule()
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
     }
 
     private var rarityLegendButton: some View {
@@ -765,7 +787,8 @@ struct CampusMapView: View {
             ToolbarItem(placement: .navigationBarLeading) {
                 rarityLegendButton
             }
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItemGroup(placement: .navigationBarTrailing) {
+                coinBalanceBadge
                 notificationButton
             }
         }
@@ -994,4 +1017,8 @@ private extension Array {
         }
         return chunks
     }
+}
+
+private func coinsText(_ value: Double) -> String {
+    String(format: "%.1f", value)
 }
