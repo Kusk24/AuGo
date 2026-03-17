@@ -13,6 +13,7 @@ struct AnnouncerCampusMapView: View {
     @State private var selectedAnnouncement: Announcement?
     @State private var isPresentingCreateAnnouncement = false
     @State private var showNotificationList = false
+    @State private var showMapLegend = false
     @State private var mapAnnouncements: [Announcement] = []
     @State private var announcementsListener: ListenerRegistration?
 
@@ -23,6 +24,49 @@ struct AnnouncerCampusMapView: View {
             longitude: campusMapViewModel.campusRegion.center.longitude - (span.longitudeDelta * 0.05)
         )
         return MKCoordinateRegion(center: shiftedCenter, span: span)
+    }
+
+    private struct AnnouncementLegendItem: Identifiable {
+        let id = UUID()
+        let label: String
+        let description: String
+        let symbol: String
+        let color: Color
+    }
+
+    private var mapLegendRows: [AnnouncementLegendItem] {
+        [
+            AnnouncementLegendItem(
+                label: "Pending",
+                description: "Waiting for admin review before publish.",
+                symbol: "clock.badge.exclamationmark.fill",
+                color: .gray
+            ),
+            AnnouncementLegendItem(
+                label: "Scheduled",
+                description: "Approved and set to start in the future.",
+                symbol: "checkmark.seal.fill",
+                color: .blue
+            ),
+            AnnouncementLegendItem(
+                label: "Active",
+                description: "Live announcement currently visible to users.",
+                symbol: "megaphone.fill",
+                color: .green
+            ),
+            AnnouncementLegendItem(
+                label: "Active (Urgent)",
+                description: "Live urgent announcement with high priority.",
+                symbol: "megaphone.fill",
+                color: .red
+            ),
+            AnnouncementLegendItem(
+                label: "Declined",
+                description: "Rejected by admin and not published.",
+                symbol: "xmark.octagon.fill",
+                color: .red
+            )
+        ]
     }
     
     var body: some View {
@@ -90,6 +134,14 @@ struct AnnouncerCampusMapView: View {
             announcementsListener = nil
         }
         .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    showMapLegend = true
+                } label: {
+                    Image(systemName: "questionmark.circle.fill")
+                        .foregroundStyle(Color.Brand.primary)
+                }
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
                     showNotificationList = true
@@ -111,6 +163,52 @@ struct AnnouncerCampusMapView: View {
         .sheet(isPresented: $showNotificationList) {
             NotificationListView()
                 .environmentObject(notificationManager)
+        }
+        .sheet(isPresented: $showMapLegend) {
+            NavigationStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Announcement Icons")
+                            .font(.headline)
+                            .foregroundStyle(Color.Brand.primary)
+
+                        ForEach(mapLegendRows) { row in
+                            HStack(alignment: .top, spacing: 12) {
+                                ZStack {
+                                    Circle()
+                                        .fill(row.color)
+                                        .frame(width: 24, height: 24)
+                                    Image(systemName: row.symbol)
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundStyle(.white)
+                                }
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(row.label)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundColor(.primary)
+                                    Text(row.description)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                    .padding(16)
+                }
+                .navigationTitle("Map Legend")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") {
+                            showMapLegend = false
+                        }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
         .sheet(item: $selectedAnnouncement) { ann in
             SingleAnnouncementView(announcement: ann)
